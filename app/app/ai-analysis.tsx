@@ -73,6 +73,7 @@ interface LungCancerData {
   pack_years: string;
   gender: 'Male' | 'Female';
   radon_exposure: 'High' | 'Low' | 'Unknown';
+  cumulative_smoking:string;
   asbestos_exposure: boolean;
   secondhand_smoke_exposure: boolean;
   copd_diagnosis: boolean;
@@ -159,6 +160,7 @@ export default function AiAnalysisScreen() {
     pack_years: '66.02524418',
     gender: 'Male',
     radon_exposure: 'High',
+    cumulative_smoking:'4,555.74184842',
     asbestos_exposure: false,
     secondhand_smoke_exposure: false,
     copd_diagnosis: true,
@@ -419,7 +421,14 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
               <TextInput
                 style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface }]}
                 value={lungData.age}
-                onChangeText={(text) => setLungData(prev => ({ ...prev, age: text }))}
+                onChangeText={(text) =>
+  setLungData(prev => ({
+    ...prev,
+    age: text,
+    cumulative_smoking:
+      (parseFloat(text) || 0) * (parseFloat(prev.pack_years) || 0)
+  }))
+}
                 placeholder="أدخل العمر"
                 keyboardType="numeric"
               />
@@ -430,11 +439,28 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
               <TextInput
                 style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface }]}
                 value={lungData.pack_years}
-                onChangeText={(text) => setLungData(prev => ({ ...prev, pack_years: text }))}
+                onChangeText={(text) =>
+  setLungData(prev => ({
+    ...prev,
+    pack_years: text,
+    cumulative_smoking:
+      (parseFloat(prev.age) || 0) * (parseFloat(text) || 0)
+  }))
+}
                 placeholder="أدخل سنوات التدخين"
                 keyboardType="decimal-pad"
               />
             </View>
+            <View style={styles.formRow}>
+  <ThemedText style={styles.inputLabel}>معدل التدخين التراكمي</ThemedText>
+  <TextInput
+    style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface }]}
+    value={lungData.cumulative_smoking?.toString() || "0"}
+    placeholder="0"
+    editable={false} // لأنه محسوب تلقائي
+  />
+</View>
+
 
             <View style={styles.formRow}>
               <ThemedText style={styles.inputLabel}>الجنس</ThemedText>
@@ -783,24 +809,6 @@ return (
           اختر نوع السرطان وأدخل البيانات للحصول على تحليل ذكي
         </ThemedText>
 
-        {/* اختيار نوع السرطان */}
-        <View style={styles.section}>
-          <ThemedText type="subtitle" style={styles.sectionTitle}>
-            اختر نوع السرطان للتحليل
-          </ThemedText>
-
-<<<<<<< HEAD
-          <View style={styles.cancerTypesContainer}>
-            {CANCER_TYPES.map((cancer) => (
-              <TouchableOpacity
-                key={cancer.id}
-                style={[
-                  styles.cancerTypeButton,
-                  {
-                    backgroundColor:
-                      selectedCancerType === cancer.id
-                        ? colors.primary
-=======
           {/* قسم اختيار نوع السرطان */}
           <View style={styles.section}>
             <ThemedText type="subtitle" style={styles.sectionTitle}>
@@ -815,7 +823,6 @@ return (
                     {
                       backgroundColor: selectedCancerType === cancer.id 
                         ? colors.primary 
->>>>>>> dfceddfb8be93634b1d4a2c429b13b851a6c3b7e
                         : colors.surface,
                     borderColor:
                       selectedCancerType === cancer.id
@@ -841,7 +848,6 @@ return (
           </View>
         </View>
 
-<<<<<<< HEAD
         {/* الفورم Scroll فقط */}
         {selectedCancerType && (
           <View
@@ -850,89 +856,7 @@ return (
               marginTop: 10,
               maxHeight: 450, // 🔥 مهم جداً علشان Scroll يشتغل
             }}
-=======
-          {/* قسم تحميل الملف */}
-          <View style={[styles.uploadSection, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-            <View style={[styles.iconContainer, { backgroundColor: colors.primary + '15' }]}>
-              <IconSymbol name="doc.text.fill" size={40} color={colors.primary} />
-            </View>
-            
-            {selectedFile ? (
-              <View style={styles.fileInfo}>
-                <ThemedText type="defaultSemiBold" numberOfLines={1}>{selectedFile.name}</ThemedText>
-                <ThemedText style={{ fontSize: 12, opacity: 0.6 }}>
-                  {(selectedFile.size ? (selectedFile.size / 1024 / 1024).toFixed(2) : '0')} MB
-                </ThemedText>
-                <TouchableOpacity onPress={() => setSelectedFile(null)} style={{ marginTop: 8 }}>
-                  <ThemedText style={{ color: colors.error, fontSize: 14 }}>{t('ai.remove') || 'إزالة'}</ThemedText>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <ThemedText style={{ textAlign: 'center', marginVertical: 12, opacity: 0.6 }}>
-                {t('ai.noFile') || 'لم يتم اختيار ملف'}
-              </ThemedText>
-            )}
 
-            <TouchableOpacity 
-              style={[styles.button, { backgroundColor: colors.accent }]} 
-              onPress={handleDocumentPick}
-              disabled={analyzing}
-            >
-              <ThemedText style={styles.buttonText}>
-                {selectedFile ? (t('ai.changeFile') || 'تغيير الملف') : (t('ai.selectFile') || 'اختر ملف')}
-              </ThemedText>
-            </TouchableOpacity>
-          </View>
-
-          {/* حالة التحليل */}
-          {analyzing && (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <ThemedText style={{ marginTop: 16 }}>{t('ai.analyzing') || 'جاري التحليل...'}</ThemedText>
-              <ThemedText style={{ fontSize: 14, opacity: 0.6, marginTop: 8 }}>
-                تحليل {selectedCancerType === 'breast' ? 'سرطان الثدي' : 
-                       selectedCancerType === 'colorectal' ? 'سرطان القولون' : 
-                       'سرطان الرئة'}
-              </ThemedText>
-            </View>
-          )}
-
-          {/* عرض النتيجة */}
-          {result && !analyzing && (
-            <View style={[styles.resultContainer, { backgroundColor: colors.success + '15', borderColor: colors.success }]}>
-              <View style={styles.resultHeader}>
-                <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-                <ThemedText type="subtitle" style={{ color: colors.success, marginLeft: 8 }}>
-                  {t('ai.result') || 'نتيجة التحليل'}
-                </ThemedText>
-              </View>
-              <ThemedText style={{ lineHeight: 24, marginTop: 12 }}>{result}</ThemedText>
-              
-              <View style={[styles.resultFooter, { borderTopColor: colors.border }]}>
-                <ThemedText style={{ fontSize: 12, opacity: 0.6 }}>
-                  نوع التحليل: {selectedCancerType === 'breast' ? 'سرطان الثدي' : 
-                               selectedCancerType === 'colorectal' ? 'سرطان القولون' : 
-                               'سرطان الرئة'}
-                </ThemedText>
-                <ThemedText style={{ fontSize: 12, opacity: 0.6 }}>
-                  {new Date().toLocaleDateString()}
-                </ThemedText>
-              </View>
-            </View>
-          )}
-
-          {/* زر بدء التحليل */}
-          <TouchableOpacity
-            style={[
-              styles.analyzeButton, 
-              { 
-                backgroundColor: !isAnalyzeDisabled ? colors.primary : colors.icon + '40',
-                opacity: isAnalyzeDisabled ? 0.5 : 1
-              }
-            ]}
-            onPress={handleAnalyze}
-            disabled={isAnalyzeDisabled}
->>>>>>> dfceddfb8be93634b1d4a2c429b13b851a6c3b7e
           >
             <ThemedText type="subtitle" style={styles.sectionTitle}>
               أدخل بيانات{" "}
@@ -961,7 +885,7 @@ return (
       </ThemedView>
 
       {/* زر التحليل ثابت أسفل الشاشة */}
-      <ThemedView style={styles.fixedButtonContainer}>
+      <ThemedView styles={styles.fixedButtonContainer}>
         <TouchableOpacity
           style={[
             styles.analyzeButton,
@@ -1105,12 +1029,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   loadingContainer: {
-<<<<<<< HEAD
-    alignItems: 'center',
-=======
-
-alignItems: 'center',
->>>>>>> dfceddfb8be93634b1d4a2c429b13b851a6c3b7e
     marginVertical: 24,
     padding: 20,
   },
