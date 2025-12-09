@@ -57,14 +57,157 @@
   },
   "ai": {
       "title": "تنبؤ السرطان بالذكاء الاصطناعي",
-      "noFile": "لم يتم اختيار ملف",
-      "description": "ارفع تقاريرك الطبية (PDF أو صورة) للحصول على تشخيص مبدئي فوري مدعوم بالذكاء الاصطناعي.",
-      "selectFile": "اختر ملف",
-      "changeFile": "تغيير الملف",
-      "startPrediction": "بدء التنبؤ",
-      "analyzing": "جاري تحليل البيانات...",
-      "result": "نتيجة التحليل",
-      "remove": "إزالة"
+      "description": "اختر نوع السرطان وأدخل البيانات للحصول على تحليل ذكي",
+      "chooseType": "اختر نوع السرطان للتحليل",
+      "enterData": "أدخل بيانات {{type}}",
+      "types": {
+          "breast": "سرطان الثدي",
+          "lung": "سرطان الرئة",
+          "colorectal": "سرطان القولون"
+      },
+      "forms": {
+          "breast": {
+              "title": "بيانات سرطان الثدي",
+              "subtitle": "أدخل القيم العشرية للخصائص التالية:",
+              "groups": {
+                  "mean": "Mean Features",
+                  "se": "Standard Error Features",
+                  "worst": "Worst Features"
+              },
+              "fields": {
+                  "radius_mean": "Radius Mean",
+                  "texture_mean": "Texture Mean",
+                  "perimeter_mean": "Perimeter Mean",
+                  "area_mean": "Area Mean",
+                  "smoothness_mean": "Smoothness Mean",
+                  "compactness_mean": "Compactness Mean",
+                  "concavity_mean": "Concavity Mean",
+                  "concave_points_mean": "Concave Points Mean",
+                  "symmetry_mean": "Symmetry Mean",
+                  "fractal_dimension_mean": "Fractal Dimension Mean",
+                  "radius_se": "Radius SE",
+                  "texture_se": "Texture SE",
+                  "perimeter_se": "Perimeter SE",
+                  "area_se": "Area SE",
+                  "smoothness_se": "Smoothness SE",
+                  "compactness_se": "Compactness SE",
+                  "concavity_se": "Concavity SE",
+                  "concave_points_se": "Concave Points SE",
+                  "symmetry_se": "Symmetry SE",
+                  "fractal_dimension_se": "Fractal Dimension SE",
+                  "radius_worst": "Radius Worst",
+                  "texture_worst": "Texture Worst",
+                  "perimeter_worst": "Perimeter Worst",
+                  "area_worst": "Area Worst",
+                  "smoothness_worst": "Smoothness Worst",
+                  "compactness_worst": "Compactness Worst",
+                  "concavity_worst": "Concavity Worst",
+                  "concave_points_worst": "Concave Points Worst",
+                  "symmetry_worst": "Symmetry Worst",
+                  "fractal_dimension_worst": "Fractal Dimension Worst"
+              },
+              "placeholder": "أدخل القيمة"
+          },
+          "lung": {
+              "title": "بيانات سرطان الرئة",
+              "groups": {
+                  "basic": "المعلومات الأساسية",
+                  "risk": "عوامل الخطر"
+              },
+              "fields": {
+                  "age": "العمر",
+                  "packYears": "سنوات التدخين (Pack Years)",
+                  "cumulative": "معدل التدخين التراكمي",
+                  "gender": "الجنس",
+                  "radon": "تعرض الرادون",
+                  "asbestos": "تعرض للأسبستوس",
+                  "secondhand": "تعرض للتدخين السلبي",
+                  "copd": "تشخيص مرض الانسداد الرئوي",
+                  "history": "تاريخ عائلي للمرض",
+                  "alcohol": "استهلاك الكحول"
+              },
+              "placeholders": {
+                  "age": "أدخل العمر",
+                  "packYears": "أدخل سنوات التدخين"
+              },
+              "options": {
+                  "male": "ذكر",
+                  "female": "أنثى",
+                  "high": "عالي",
+                  "low": "منخفض",
+                  "unknown": "غير معروف",
+                  "none": "لا يوجد",
+                  "moderate": "معتدل"
+              }
+          },
+          "colorectal": {
+              "title": "بيانات سرطان القولون",
+              "groups": {
+                  "personal": "المعلومات الشخصية",
+                  "nutritional": "المعلومات الغذائية"
+              },
+              "fields": {
+                  "age": "العمر",
+                  "gender": "الجنس",
+                  "bmi": "مؤشر كتلة الجسم (BMI)",
+                  "lifestyle": "نمط الحياة",
+                  "ethnicity": "العرق",
+                  "history": "تاريخ عائلي للمرض",
+                  "conditions": "أمراض سابقة",
+                  "carbs": "الكربوهيدرات (جرام)",
+                  "proteins": "البروتينات (جرام)",
+                  "fats": "الدهون (جرام)",
+                  "vitA": "فيتامين أ (وحدة دولية)",
+                  "vitC": "فيتامين سي (ملجم)",
+                  "iron": "الحديد (ملجم)"
+              },
+               "placeholders": {
+                  "age": "أدخل العمر",
+                  "bmi": "أدخل BMI",
+                  "ethnicity": "أدخل العرق",
+                  "conditions": "أدخل الأمراض السابقة",
+                  "generic": "أدخل {{label}}"
+              },
+              "options": {
+                  "male": "ذكر",
+                  "female": "أنثى",
+                  "sedentary": "قليل الحركة",
+                  "active": "نشيط",
+                  "veryActive": "نشيط جداً"
+              }
+          }
+      },
+      "results": {
+          "title": "نتيجة التحليل",
+          "diagnosis": "التشخيص:",
+          "positive": "إيجابي (خطر)",
+          "negative": "سلبي (آمن)",
+          "probability": "نسبة الاحتمال:",
+          "riskLevel": "مستوى الخطورة:",
+          "levels": {
+              "high": "عالي",
+              "medium": "متوسط",
+              "low": "منخفض"
+          },
+          "threshold": "الحد المستخدم:",
+          "type": "نوع التحليل:",
+          "time": "الوقت: {{time}} مللي ثانية"
+      },
+      "errors": {
+          "dataError": "خطأ في البيانات",
+          "invalidValue": "الرجاء إدخال قيمة صحيحة لـ {{field}}",
+          "missingLung": "الرجاء إدخال العمر وسنوات التدخين",
+          "numericLung": "العمر وسنوات التدخين يجب أن يكونا أرقاماً",
+          "missingColorectal": "الرجاء إدخال العمر و BMI",
+          "numericColorectal": "العمر و BMI يجب أن يكونا أرقاماً",
+          "general": "خطأ",
+          "selectType": "الرجاء اختيار نوع السرطان أولاً",
+          "analysisError": "خطأ في التحليل",
+          "serverError": "حدث خطأ أثناء الاتصال بالسيرفر"
+      },
+      "actions": {
+          "analyze": "بدء التحليل"
+      }
   },
   "navigation": {
     "home": "الرئيسية",

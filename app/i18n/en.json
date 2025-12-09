@@ -57,14 +57,157 @@
   },
   "ai": {
       "title": "AI Cancer Prediction",
-      "noFile": "No file selected",
-      "description": "Upload your medical reports (PDF or Image) to get an instant AI-powered preliminary diagnosis.",
-      "selectFile": "Select File",
-      "changeFile": "Change File",
-      "startPrediction": "Start Prediction",
-      "analyzing": "Analyzing data...",
-      "result": "Analysis Result",
-      "remove": "Remove"
+      "description": "Choose cancer type and enter data for smart analysis",
+      "chooseType": "Choose cancer type for analysis",
+      "enterData": "Enter {{type}} Data",
+      "types": {
+          "breast": "Breast Cancer",
+          "lung": "Lung Cancer",
+          "colorectal": "Colorectal Cancer"
+      },
+      "forms": {
+          "breast": {
+              "title": "Breast Cancer Data",
+              "subtitle": "Enter decimal values for the following features:",
+              "groups": {
+                  "mean": "Mean Features",
+                  "se": "Standard Error Features",
+                  "worst": "Worst Features"
+              },
+              "fields": {
+                  "radius_mean": "Radius Mean",
+                  "texture_mean": "Texture Mean",
+                  "perimeter_mean": "Perimeter Mean",
+                  "area_mean": "Area Mean",
+                  "smoothness_mean": "Smoothness Mean",
+                  "compactness_mean": "Compactness Mean",
+                  "concavity_mean": "Concavity Mean",
+                  "concave_points_mean": "Concave Points Mean",
+                  "symmetry_mean": "Symmetry Mean",
+                  "fractal_dimension_mean": "Fractal Dimension Mean",
+                  "radius_se": "Radius SE",
+                  "texture_se": "Texture SE",
+                  "perimeter_se": "Perimeter SE",
+                  "area_se": "Area SE",
+                  "smoothness_se": "Smoothness SE",
+                  "compactness_se": "Compactness SE",
+                  "concavity_se": "Concavity SE",
+                  "concave_points_se": "Concave Points SE",
+                  "symmetry_se": "Symmetry SE",
+                  "fractal_dimension_se": "Fractal Dimension SE",
+                  "radius_worst": "Radius Worst",
+                  "texture_worst": "Texture Worst",
+                  "perimeter_worst": "Perimeter Worst",
+                  "area_worst": "Area Worst",
+                  "smoothness_worst": "Smoothness Worst",
+                  "compactness_worst": "Compactness Worst",
+                  "concavity_worst": "Concavity Worst",
+                  "concave_points_worst": "Concave Points Worst",
+                  "symmetry_worst": "Symmetry Worst",
+                  "fractal_dimension_worst": "Fractal Dimension Worst"
+              },
+              "placeholder": "Enter value"
+          },
+          "lung": {
+              "title": "Lung Cancer Data",
+              "groups": {
+                  "basic": "Basic Information",
+                  "risk": "Risk Factors"
+              },
+              "fields": {
+                  "age": "Age",
+                  "packYears": "Pack Years",
+                  "cumulative": "Cumulative Smoking",
+                  "gender": "Gender",
+                  "radon": "Radon Exposure",
+                  "asbestos": "Asbestos Exposure",
+                  "secondhand": "Secondhand Smoke Exposure",
+                  "copd": "COPD Diagnosis",
+                  "history": "Family History",
+                  "alcohol": "Alcohol Consumption"
+              },
+              "placeholders": {
+                  "age": "Enter Age",
+                  "packYears": "Enter Pack Years"
+              },
+              "options": {
+                  "male": "Male",
+                  "female": "Female",
+                  "high": "High",
+                  "low": "Low",
+                  "unknown": "Unknown",
+                  "none": "None",
+                  "moderate": "Moderate"
+              }
+          },
+          "colorectal": {
+              "title": "Colorectal Cancer Data",
+              "groups": {
+                  "personal": "Personal Information",
+                  "nutritional": "Nutritional Information"
+              },
+              "fields": {
+                  "age": "Age",
+                  "gender": "Gender",
+                  "bmi": "BMI",
+                  "lifestyle": "Lifestyle",
+                  "ethnicity": "Ethnicity",
+                  "history": "Family History",
+                  "conditions": "Pre-existing Conditions",
+                  "carbs": "Carbohydrates (g)",
+                  "proteins": "Proteins (g)",
+                  "fats": "Fats (g)",
+                  "vitA": "Vitamin A (IU)",
+                  "vitC": "Vitamin C (mg)",
+                  "iron": "Iron (mg)"
+              },
+               "placeholders": {
+                  "age": "Enter Age",
+                  "bmi": "Enter BMI",
+                  "ethnicity": "Enter Ethnicity",
+                  "conditions": "Enter Pre-existing Conditions",
+                  "generic": "Enter {{label}}"
+              },
+              "options": {
+                  "male": "Male",
+                  "female": "Female",
+                  "sedentary": "Sedentary",
+                  "active": "Active",
+                  "veryActive": "Very Active"
+              }
+          }
+      },
+      "results": {
+          "title": "Analysis Result",
+          "diagnosis": "Diagnosis:",
+          "positive": "Positive (High Risk)",
+          "negative": "Negative (Safe)",
+          "probability": "Probability:",
+          "riskLevel": "Risk Level:",
+          "levels": {
+              "high": "High",
+              "medium": "Medium",
+              "low": "Low"
+          },
+          "threshold": "Threshold Used:",
+          "type": "Analysis Type:",
+          "time": "Time: {{time}} ms"
+      },
+      "errors": {
+          "dataError": "Data Error",
+          "invalidValue": "Please enter a valid value for {{field}}",
+          "missingLung": "Please enter Age and Pack Years",
+          "numericLung": "Age and Pack Years must be numbers",
+          "missingColorectal": "Please enter Age and BMI",
+          "numericColorectal": "Age and BMI must be numbers",
+          "general": "Error",
+          "selectType": "Please select cancer type first",
+          "analysisError": "Analysis Error",
+          "serverError": "Error connecting to server"
+      },
+      "actions": {
+          "analyze": "Start Analysis"
+      }
   },
   "navigation": {
     "home": "Home",

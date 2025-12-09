@@ -43,10 +43,10 @@ const LANGUAGE_DETECTOR = {
 
 // @ts-ignore
 i18n
-  .use(LANGUAGE_DETECTOR)
+  .use(LANGUAGE_DETECTOR as any)
   .use(initReactI18next)
   .init({
-    compatibilityJSON: 'v3',
+    compatibilityJSON: 'v4',
     resources: RESOURCES,
     fallbackLng: 'en',
     interpolation: {
