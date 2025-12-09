@@ -34,6 +34,11 @@ const MAPPING = {
   'person.2.fill': 'people',
   'clock.fill': 'schedule',
   'heart.fill': 'favorite',
+  'brain.head.profile': 'psychology',
+  'exclamationmark.triangle.fill': 'warning',
+  'checkmark.circle.fill': 'check-circle',
+  'xmark.circle.fill': 'cancel',
+  'globe': 'public',
 } as IconMapping;
 
 /**

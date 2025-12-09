@@ -8,7 +8,9 @@ import {
   ScrollView, 
   TextInput, 
   Switch,
-  Dimensions 
+  Dimensions,
+  Modal,
+  TouchableWithoutFeedback 
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -21,19 +23,20 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 
 const { width } = Dimensions.get('window');
 
-// Server URL - Change as needed
-const API_BASE_URL = 'http://192.168.1.6:8000'; // Replace with actual server address
+// عنوان السيرفر - غيره حسب احتياجك
+const API_BASE_URL = 'http://192.168.1.96:8000'; // استبدل بعنوان السيرفر الحقيقي
+// أو استخدم localhost للتجربة على المحاكي: http://localhost:8000
 
-// Available Cancer Types
+// أنواع السرطان المتاحة
 const CANCER_TYPES = [
-  { id: 'breast' },
-  { id: 'colorectal' },
-  { id: 'lung' },
+  { id: 'breast', label: 'Breast Cancer' },
+  { id: 'colorectal', label: 'Colorectal Cancer' },
+  { id: 'lung', label: 'Lung Cancer' },
 ] as const;
 
 type CancerType = typeof CANCER_TYPES[number]['id'];
 
-// Data Interfaces
+// تعريف أنواع البيانات لكل نوع سرطان
 interface BreastCancerData {
   radius_mean: string;
   texture_mean: string;
@@ -72,7 +75,7 @@ interface LungCancerData {
   pack_years: string;
   gender: 'Male' | 'Female';
   radon_exposure: 'High' | 'Low' | 'Unknown';
-  cumulative_smoking:string;
+  cumulative_smoking: string;
   asbestos_exposure: boolean;
   secondhand_smoke_exposure: boolean;
   copd_diagnosis: boolean;
@@ -120,7 +123,7 @@ export default function AiAnalysisScreen() {
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<PredictionResult | null>(null);
   
-  // Model Data
+  // بيانات النماذج
   const [breastData, setBreastData] = useState<BreastCancerData>({
     radius_mean: '',
     texture_mean: '',
@@ -159,7 +162,7 @@ export default function AiAnalysisScreen() {
     pack_years: '',
     gender: 'Male',
     radon_exposure: 'Unknown',
-    cumulative_smoking:'',
+    cumulative_smoking: '0',
     asbestos_exposure: false,
     secondhand_smoke_exposure: false,
     copd_diagnosis: false,
@@ -188,43 +191,52 @@ export default function AiAnalysisScreen() {
     setResult(null);
   };
 
-  // Function to send data to server
-const sendPredictionRequest = async (modelName: string, features: any) => {
-  try {
-    let endpoint = '';
+  // دالة لإعداد البيانات للإرسال بالشكل المطلوب
+  const prepareRequestData = (modelName: string, features: any) => {
+    return {
+      model_name: modelName,
+      features: features,
+      threshold: 0.3
+    };
+  };
 
-    if (modelName === 'breast') endpoint = '/predict/breast';
-    else if (modelName === 'lung') endpoint = '/predict/lung';
-    else if (modelName === 'colorectal') endpoint = '/predict/colorectal';
+  // دالة لإرسال البيانات للسيرفر بالشكل المطلوب
+  const sendPredictionRequest = async (modelName: string, features: any) => {
+    try {
+      // استخدم نفس الـ endpoint للجميع أو غيره حسب حاجة السيرفر
+      const endpoint = '/predict';
+      
+      // إعداد البيانات بالشكل المطلوب
+      const requestData = prepareRequestData(modelName, features);
+      
+      console.log('Sending request:', JSON.stringify(requestData, null, 2));
+      
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData),
+      });
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        features: features,
-        threshold: 0.5
-      }),
-    });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Server error: ${response.status} - ${errorText}`);
+      }
 
-    if (!response.ok) {
-      throw new Error(`Server error: ${response.status}`);
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Prediction error:', error);
+      throw new Error(`Failed to get prediction: ${error.message}`);
     }
+  };
 
-    const data = await response.json();
-    return data;
-  } catch (error: any) {
-    console.error('Prediction error:', error);
-    throw new Error(`Failed to get prediction: ${error.message}`);
-  }
-};
-
-
-  // Validation function
+  // دالة للتحقق من صحة البيانات قبل الإرسال
   const validateData = (data: any, cancerType: CancerType): boolean => {
     switch (cancerType) {
       case 'breast':
+        // تحقق أن جميع الحقول موجودة وهي أرقام
         for (const [key, value] of Object.entries(data)) {
           if (!value || isNaN(parseFloat(value as string))) {
             Alert.alert(t('ai.errors.dataError'), t('ai.errors.invalidValue', { field: key }));
@@ -255,6 +267,7 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
         }
         break;
     }
+    
     return true;
   };
 
@@ -264,31 +277,57 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
       return;
     }
 
+    // تحقق من صحة البيانات
     let dataToSend: any;
+    let modelName = '';
+    
     switch (selectedCancerType) {
       case 'breast':
         if (!validateData(breastData, 'breast')) return;
+        // تحويل بيانات سرطان الثدي للصيغة المناسبة
         dataToSend = { ...breastData };
+        modelName = 'breast';
         break;
+        
       case 'lung':
         if (!validateData(lungData, 'lung')) return;
+        // تحويل البيانات الرئوية للصيغة المناسبة تماماً كما في المثال
         dataToSend = {
-          ...lungData,
+          age: parseFloat(lungData.age),
+          pack_years: parseFloat(lungData.pack_years),
+          cumulative_smoking: lungData.cumulative_smoking,
+          gender: lungData.gender,
+          radon_exposure: lungData.radon_exposure,
           asbestos_exposure: lungData.asbestos_exposure ? 'Yes' : 'No',
           secondhand_smoke_exposure: lungData.secondhand_smoke_exposure ? 'Yes' : 'No',
           copd_diagnosis: lungData.copd_diagnosis ? 'Yes' : 'No',
+          alcohol_consumption: lungData.alcohol_consumption,
           family_history: lungData.family_history ? 'Yes' : 'No'
         };
+        modelName = 'lung';
         break;
+        
       case 'colorectal':
         if (!validateData(colorectalData, 'colorectal')) return;
+        // تحويل بيانات القولون للصيغة المناسبة
         dataToSend = {
-          ...colorectalData,
-          Family_History_CRC: colorectalData.Family_History_CRC ? 'Yes' : 'No',
+          Age: parseFloat(colorectalData.Age),
+          Gender: colorectalData.Gender,
+          BMI: parseFloat(colorectalData.BMI),
+          Lifestyle: colorectalData.Lifestyle,
           Ethnicity: colorectalData.Ethnicity || 'Other',
-          'Pre-existing Conditions': colorectalData['Pre-existing Conditions'] || 'None'
+          Family_History_CRC: colorectalData.Family_History_CRC ? 'Yes' : 'No',
+          'Pre-existing Conditions': colorectalData['Pre-existing Conditions'] || 'None',
+          'Carbohydrates (g)': parseFloat(colorectalData['Carbohydrates (g)']),
+          'Proteins (g)': parseFloat(colorectalData['Proteins (g)']),
+          'Fats (g)': parseFloat(colorectalData['Fats (g)']),
+          'Vitamin A (IU)': parseFloat(colorectalData['Vitamin A (IU)']),
+          'Vitamin C (mg)': parseFloat(colorectalData['Vitamin C (mg)']),
+          'Iron (mg)': parseFloat(colorectalData['Iron (mg)'])
         };
+        modelName = 'colorectal';
         break;
+        
       default:
         return;
     }
@@ -297,7 +336,7 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
     setResult(null);
 
     try {
-      const predictionResult = await sendPredictionRequest(selectedCancerType, dataToSend);
+      const predictionResult = await sendPredictionRequest(modelName, dataToSend);
       setResult(predictionResult);
     } catch (error: any) {
       Alert.alert(t('ai.errors.analysisError'), error.message || t('ai.errors.serverError'));
@@ -311,23 +350,14 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
       <ThemedText type="subtitle" style={styles.formTitle}>{t('ai.forms.breast.title')}</ThemedText>
       <ThemedText style={styles.formSubtitle}>{t('ai.forms.breast.subtitle')}</ThemedText>
       
-      <View style={styles.formScrollView}>
-        <View style={styles.formGrid}>
+      <View style={styles.formGrid}>
           {/* Group 1: Mean Features */}
           <View style={styles.featureGroup}>
             <ThemedText type="defaultSemiBold" style={styles.groupTitle}>{t('ai.forms.breast.groups.mean')}</ThemedText>
             {[
-              { key: 'radius_mean' },
-              { key: 'texture_mean' },
-              { key: 'perimeter_mean' },
-              { key: 'area_mean' },
-              { key: 'smoothness_mean' },
-              { key: 'compactness_mean' },
-              { key: 'concavity_mean' },
-              { key: 'concave_points_mean' },
-              { key: 'symmetry_mean' },
-              { key: 'fractal_dimension_mean' },
-            ].map(({ key }) => (
+              'radius_mean', 'texture_mean', 'perimeter_mean', 'area_mean', 'smoothness_mean',
+              'compactness_mean', 'concavity_mean', 'concave_points_mean', 'symmetry_mean', 'fractal_dimension_mean'
+            ].map((key) => (
               <View key={key} style={styles.formRow}>
                 <ThemedText style={styles.inputLabel}>{t(`ai.forms.breast.fields.${key}`)}</ThemedText>
                 <TextInput
@@ -346,17 +376,9 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
           <View style={styles.featureGroup}>
             <ThemedText type="defaultSemiBold" style={styles.groupTitle}>{t('ai.forms.breast.groups.se')}</ThemedText>
             {[
-              { key: 'radius_se' },
-              { key: 'texture_se' },
-              { key: 'perimeter_se' },
-              { key: 'area_se' },
-              { key: 'smoothness_se' },
-              { key: 'compactness_se' },
-              { key: 'concavity_se' },
-              { key: 'concave_points_se' },
-              { key: 'symmetry_se' },
-              { key: 'fractal_dimension_se' },
-            ].map(({ key }) => (
+              'radius_se', 'texture_se', 'perimeter_se', 'area_se', 'smoothness_se',
+              'compactness_se', 'concavity_se', 'concave_points_se', 'symmetry_se', 'fractal_dimension_se'
+            ].map((key) => (
               <View key={key} style={styles.formRow}>
                 <ThemedText style={styles.inputLabel}>{t(`ai.forms.breast.fields.${key}`)}</ThemedText>
                 <TextInput
@@ -375,17 +397,9 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
           <View style={styles.featureGroup}>
             <ThemedText type="defaultSemiBold" style={styles.groupTitle}>{t('ai.forms.breast.groups.worst')}</ThemedText>
             {[
-              { key: 'radius_worst' },
-              { key: 'texture_worst' },
-              { key: 'perimeter_worst' },
-              { key: 'area_worst' },
-              { key: 'smoothness_worst' },
-              { key: 'compactness_worst' },
-              { key: 'concavity_worst' },
-              { key: 'concave_points_worst' },
-              { key: 'symmetry_worst' },
-              { key: 'fractal_dimension_worst' },
-            ].map(({ key }) => (
+              'radius_worst', 'texture_worst', 'perimeter_worst', 'area_worst', 'smoothness_worst',
+              'compactness_worst', 'concavity_worst', 'concave_points_worst', 'symmetry_worst', 'fractal_dimension_worst'
+            ].map((key) => (
               <View key={key} style={styles.formRow}>
                 <ThemedText style={styles.inputLabel}>{t(`ai.forms.breast.fields.${key}`)}</ThemedText>
                 <TextInput
@@ -401,16 +415,14 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
           </View>
         </View>
       </View>
-    </View>
   );
 
   const renderLungCancerForm = () => (
     <View style={styles.fullFormContainer}>
       <ThemedText type="subtitle" style={styles.formTitle}>{t('ai.forms.lung.title')}</ThemedText>
       
-      <View style={styles.formScrollView}>
-        <View style={styles.formGrid}>
-          {/* Basic Information */}
+      <View style={styles.formGrid}>
+          {/* المعلومات الأساسية */}
           <View style={styles.featureGroup}>
             <ThemedText type="defaultSemiBold" style={styles.groupTitle}>{t('ai.forms.lung.groups.basic')}</ThemedText>
             
@@ -420,13 +432,12 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
                 style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]}
                 value={lungData.age}
                 onChangeText={(text) =>
-  setLungData(prev => ({
-    ...prev,
-    age: text,
-    cumulative_smoking:
-      ((parseFloat(text) || 0) * (parseFloat(prev.pack_years) || 0)).toString()
-  }))
-}
+                  setLungData(prev => ({
+                    ...prev,
+                    age: text,
+                    cumulative_smoking: (parseFloat(text) || 0) * (parseFloat(prev.pack_years) || 0)
+                  }))
+                }
                 placeholder={t('ai.forms.lung.placeholders.age')}
                 placeholderTextColor={colors.icon}
                 keyboardType="numeric"
@@ -439,29 +450,27 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
                 style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]}
                 value={lungData.pack_years}
                 onChangeText={(text) =>
-  setLungData(prev => ({
-    ...prev,
-    pack_years: text,
-    cumulative_smoking:
-      ((parseFloat(prev.age) || 0) * (parseFloat(text) || 0)).toString()
-  }))
-}
+                  setLungData(prev => ({
+                    ...prev,
+                    pack_years: text,
+                    cumulative_smoking: (parseFloat(prev.age) || 0) * (parseFloat(text) || 0)
+                  }))
+                }
                 placeholder={t('ai.forms.lung.placeholders.packYears')}
                 placeholderTextColor={colors.icon}
                 keyboardType="decimal-pad"
               />
             </View>
+            
             <View style={styles.formRow}>
-  <ThemedText style={styles.inputLabel}>{t('ai.forms.lung.fields.cumulative')}</ThemedText>
-  <TextInput
-    style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]}
-    value={lungData.cumulative_smoking?.toString() || "0"}
-    placeholder="0"
-    placeholderTextColor={colors.icon}
-    editable={false}
-  />
-</View>
-
+              <ThemedText style={styles.inputLabel}>{t('ai.forms.lung.fields.cumulative')}</ThemedText>
+              <TextInput
+                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]}
+                value={lungData.cumulative_smoking.toString()}
+                placeholder="0"
+                editable={false}
+              />
+            </View>
 
             <View style={styles.formRow}>
               <ThemedText style={styles.inputLabel}>{t('ai.forms.lung.fields.gender')}</ThemedText>
@@ -479,7 +488,7 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
                     onPress={() => setLungData(prev => ({ ...prev, gender: option as 'Male' | 'Female' }))}
                   >
                     <ThemedText style={{ color: lungData.gender === option ? 'white' : colors.text }}>
-                      {t(`ai.forms.lung.options.${option.toLowerCase()}`)}
+                      {option === 'Male' ? t('ai.forms.lung.options.male') : t('ai.forms.lung.options.female')}
                     </ThemedText>
                   </TouchableOpacity>
                 ))}
@@ -502,7 +511,7 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
                     onPress={() => setLungData(prev => ({ ...prev, radon_exposure: option as any }))}
                   >
                     <ThemedText style={{ color: lungData.radon_exposure === option ? 'white' : colors.text }}>
-                      {t(`ai.forms.lung.options.${option.toLowerCase()}`)}
+                      {option === 'High' ? t('ai.forms.lung.options.high') : option === 'Low' ? t('ai.forms.lung.options.low') : t('ai.forms.lung.options.unknown')}
                     </ThemedText>
                   </TouchableOpacity>
                 ))}
@@ -510,18 +519,18 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
             </View>
           </View>
 
-          {/* Risk Factors */}
+          {/* عوامل الخطر */}
           <View style={styles.featureGroup}>
             <ThemedText type="defaultSemiBold" style={styles.groupTitle}>{t('ai.forms.lung.groups.risk')}</ThemedText>
             
             {[
-              { key: 'asbestos_exposure', label: 'asbestos' },
-              { key: 'secondhand_smoke_exposure', label: 'secondhand' },
-              { key: 'copd_diagnosis', label: 'copd' },
-              { key: 'family_history', label: 'history' },
+              { key: 'asbestos_exposure', label: t('ai.forms.lung.fields.asbestos') },
+              { key: 'secondhand_smoke_exposure', label: t('ai.forms.lung.fields.secondhand') },
+              { key: 'copd_diagnosis', label: t('ai.forms.lung.fields.copd') },
+              { key: 'family_history', label: t('ai.forms.lung.fields.history') },
             ].map(({ key, label }) => (
               <View key={key} style={styles.switchRow}>
-                <ThemedText style={styles.inputLabel}>{t(`ai.forms.lung.fields.${label}`)}</ThemedText>
+                <ThemedText style={styles.inputLabel}>{label}</ThemedText>
                 <Switch
                   value={lungData[key as keyof LungCancerData] as boolean}
                   onValueChange={(value) => setLungData(prev => ({ ...prev, [key]: value }))}
@@ -546,7 +555,7 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
                     onPress={() => setLungData(prev => ({ ...prev, alcohol_consumption: option as any }))}
                   >
                     <ThemedText style={{ color: lungData.alcohol_consumption === option ? 'white' : colors.text }}>
-                      {t(`ai.forms.lung.options.${option.toLowerCase()}`)}
+                      {option === 'None' ? t('ai.forms.lung.options.none') : option === 'Moderate' ? t('ai.forms.lung.options.moderate') : t('ai.forms.lung.options.high')}
                     </ThemedText>
                   </TouchableOpacity>
                 ))}
@@ -555,16 +564,14 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
           </View>
         </View>
       </View>
-    </View>
   );
 
   const renderColorectalCancerForm = () => (
     <View style={styles.fullFormContainer}>
       <ThemedText type="subtitle" style={styles.formTitle}>{t('ai.forms.colorectal.title')}</ThemedText>
       
-      <View style={styles.formScrollView}>
-        <View style={styles.formGrid}>
-          {/* Personal Information */}
+      <View style={styles.formGrid}>
+          {/* المعلومات الشخصية */}
           <View style={styles.featureGroup}>
             <ThemedText type="defaultSemiBold" style={styles.groupTitle}>{t('ai.forms.colorectal.groups.personal')}</ThemedText>
             
@@ -596,7 +603,7 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
                     onPress={() => setColorectalData(prev => ({ ...prev, Gender: option as 'Male' | 'Female' }))}
                   >
                     <ThemedText style={{ color: colorectalData.Gender === option ? 'white' : colors.text }}>
-                      {t(`ai.forms.colorectal.options.${option.toLowerCase()}`)}
+                      {option === 'Male' ? t('ai.forms.colorectal.options.male') : t('ai.forms.colorectal.options.female')}
                     </ThemedText>
                   </TouchableOpacity>
                 ))}
@@ -618,30 +625,23 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
             <View style={styles.formRow}>
               <ThemedText style={styles.inputLabel}>{t('ai.forms.colorectal.fields.lifestyle')}</ThemedText>
               <View style={styles.radioGroup}>
-                {['Sedentary', 'Active', 'Very Active'].map((option) => {
-                  const keyMap: Record<string, string> = {
-                    'Sedentary': 'sedentary',
-                    'Active': 'active',
-                    'Very Active': 'veryActive'
-                  };
-                  return (
-                    <TouchableOpacity
-                      key={option}
-                      style={[
-                        styles.radioOption,
-                        {
-                          backgroundColor: colorectalData.Lifestyle === option ? colors.primary : colors.surface,
-                          borderColor: colors.border
-                        }
-                      ]}
-                      onPress={() => setColorectalData(prev => ({ ...prev, Lifestyle: option as any }))}
-                    >
-                      <ThemedText style={{ color: colorectalData.Lifestyle === option ? 'white' : colors.text }}>
-                        {t(`ai.forms.colorectal.options.${keyMap[option]}`)}
-                      </ThemedText>
-                    </TouchableOpacity>
-                  );
-                })}
+                {['Sedentary', 'Active', 'Very Active'].map((option) => (
+                  <TouchableOpacity
+                    key={option}
+                    style={[
+                      styles.radioOption,
+                      {
+                        backgroundColor: colorectalData.Lifestyle === option ? colors.primary : colors.surface,
+                        borderColor: colors.border
+                      }
+                    ]}
+                    onPress={() => setColorectalData(prev => ({ ...prev, Lifestyle: option as any }))}
+                  >
+                    <ThemedText style={{ color: colorectalData.Lifestyle === option ? 'white' : colors.text }}>
+                      {option === 'Sedentary' ? t('ai.forms.colorectal.options.sedentary') : option === 'Active' ? t('ai.forms.colorectal.options.active') : t('ai.forms.colorectal.options.veryActive')}
+                    </ThemedText>
+                  </TouchableOpacity>
+                ))}
               </View>
             </View>
 
@@ -677,25 +677,25 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
             </View>
           </View>
 
-          {/* Nutritional Information */}
+          {/* المعلومات الغذائية */}
           <View style={styles.featureGroup}>
             <ThemedText type="defaultSemiBold" style={styles.groupTitle}>{t('ai.forms.colorectal.groups.nutritional')}</ThemedText>
             
             {[
-              { key: 'Carbohydrates (g)', label: 'carbs' },
-              { key: 'Proteins (g)', label: 'proteins' },
-              { key: 'Fats (g)', label: 'fats' },
-              { key: 'Vitamin A (IU)', label: 'vitA' },
-              { key: 'Vitamin C (mg)', label: 'vitC' },
-              { key: 'Iron (mg)', label: 'iron' },
-            ].map(({ key, label }) => (
+              { key: 'Carbohydrates (g)', labelKey: 'carbs' },
+              { key: 'Proteins (g)', labelKey: 'proteins' },
+              { key: 'Fats (g)', labelKey: 'fats' },
+              { key: 'Vitamin A (IU)', labelKey: 'vitA' },
+              { key: 'Vitamin C (mg)', labelKey: 'vitC' },
+              { key: 'Iron (mg)', labelKey: 'iron' },
+            ].map(({ key, labelKey }) => (
               <View key={key} style={styles.formRow}>
-                <ThemedText style={styles.inputLabel}>{t(`ai.forms.colorectal.fields.${label}`)}</ThemedText>
+                <ThemedText style={styles.inputLabel}>{t(`ai.forms.colorectal.fields.${labelKey}`)}</ThemedText>
                 <TextInput
                   style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]}
                   value={colorectalData[key as keyof ColorectalCancerData] as string}
                   onChangeText={(text) => setColorectalData(prev => ({ ...prev, [key]: text }))}
-                  placeholder={t('ai.forms.colorectal.placeholders.generic', { label: t(`ai.forms.colorectal.fields.${label}`) })}
+                  placeholder={t('ai.forms.colorectal.placeholders.generic', { label: t(`ai.forms.colorectal.fields.${labelKey}`) })}
                   placeholderTextColor={colors.icon}
                   keyboardType="numeric"
                 />
@@ -704,7 +704,6 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
           </View>
         </View>
       </View>
-    </View>
   );
 
   const renderDataForm = () => {
@@ -722,6 +721,7 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
     }
   };
 
+  // عرض النتيجة بشكل جميل
   const renderResult = () => {
     if (!result) return null;
 
@@ -730,179 +730,208 @@ const sendPredictionRequest = async (modelName: string, features: any) => {
     const resultColor = isPositive ? colors.error : colors.success;
     const riskLevelColors: Record<string, string> = {
       high: colors.error,
-      medium: colors.accent,
+      medium: colors.warning,
       low: colors.success
     };
 
+    const getRiskLevelText = (level: string) => {
+      switch (level) {
+        case 'high': return t('ai.results.levels.high');
+        case 'medium': return t('ai.results.levels.medium');
+        case 'low': return t('ai.results.levels.low');
+        default: return level;
+      }
+    };
+
     return (
-      <View style={[styles.resultContainer, { 
-        backgroundColor: resultColor + '15', 
-        borderColor: resultColor 
-      }]}>
-        <View style={styles.resultHeader}>
-          <IconSymbol 
-            name={isPositive ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"} 
-            size={24} 
-            color={resultColor} 
-          />
-          <ThemedText type="subtitle" style={{ color: resultColor, marginLeft: 8 }}>
-            {t('ai.results.title')}
-          </ThemedText>
-        </View>
-        
-        <View style={styles.resultContent}>
-          <View style={styles.resultRow}>
-            <ThemedText style={styles.resultLabel}>{t('ai.results.diagnosis')}</ThemedText>
-            <ThemedText type="defaultSemiBold" style={{ color: resultColor }}>
-              {isPositive ? t('ai.results.positive') : t('ai.results.negative')}
-            </ThemedText>
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={!!result}
+        onRequestClose={() => setResult(null)}
+      >
+        <TouchableWithoutFeedback onPress={() => setResult(null)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.resultCard, { 
+                backgroundColor: colors.surface,
+                borderColor: resultColor,
+                borderWidth: 2
+              }]}>
+                <TouchableOpacity 
+                  style={styles.closeButton} 
+                  onPress={() => setResult(null)}
+                >
+                  <IconSymbol name="xmark.circle.fill" size={30} color={colors.icon} />
+                </TouchableOpacity>
+
+                <View style={styles.resultHeader}>
+                  <IconSymbol 
+                    name={isPositive ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"} 
+                    size={24} 
+                    color={resultColor} 
+                  />
+                  <ThemedText type="subtitle" style={{ color: resultColor, marginLeft: 8 }}>
+                    {t('ai.results.title')}
+                  </ThemedText>
+                </View>
+                
+                <View style={styles.resultContent}>
+                  <View style={styles.resultRow}>
+                    <ThemedText style={styles.resultLabel}>{t('ai.results.diagnosis')}</ThemedText>
+                    <ThemedText type="defaultSemiBold" style={{ color: resultColor }}>
+                      {prediction.class === 'positive' ? t('ai.results.positive') : t('ai.results.negative')}
+                    </ThemedText>
+                  </View>
+                  
+                  <View style={styles.resultRow}>
+                    <ThemedText style={styles.resultLabel}>{t('ai.results.probability')}</ThemedText>
+                    <ThemedText type="defaultSemiBold">
+                      {(prediction.probability * 100).toFixed(2)}%
+                    </ThemedText>
+                  </View>
+                  
+                  <View style={styles.resultRow}>
+                    <ThemedText style={styles.resultLabel}>{t('ai.results.riskLevel')}</ThemedText>
+                    <View style={[styles.riskBadge, { backgroundColor: riskLevelColors[prediction.risk_level] + '30' }]}>
+                      <ThemedText style={{ color: riskLevelColors[prediction.risk_level] }}>
+                        {getRiskLevelText(prediction.risk_level)}
+                      </ThemedText>
+                    </View>
+                  </View>
+                  
+                  <View style={[styles.resultFooter, { borderTopColor: colors.border }]}>
+                    <ThemedText style={{ fontSize: 12, opacity: 0.6 }}>
+                      {t('ai.results.type')} {t(`ai.types.${selectedCancerType}`)}
+                    </ThemedText>
+                    {/* <ThemedText style={{ fontSize: 12, opacity: 0.6 }}>
+                      {t('ai.results.time', { time: result.processing_time_ms })}
+                    </ThemedText> */}
+                  </View>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-          
-          <View style={styles.resultRow}>
-            <ThemedText style={styles.resultLabel}>{t('ai.results.probability')}</ThemedText>
-            <ThemedText type="defaultSemiBold">
-              {(prediction.probability * 100).toFixed(2)}%
-            </ThemedText>
-          </View>
-          
-          <View style={styles.resultRow}>
-            <ThemedText style={styles.resultLabel}>{t('ai.results.riskLevel')}</ThemedText>
-            <View style={[styles.riskBadge, { backgroundColor: riskLevelColors[prediction.risk_level] + '30' }]}>
-              <ThemedText style={{ color: riskLevelColors[prediction.risk_level] }}>
-                {t(`ai.results.levels.${prediction.risk_level}`)}
-              </ThemedText>
-            </View>
-          </View>
-          
-          <View style={styles.resultRow}>
-            <ThemedText style={styles.resultLabel}>{t('ai.results.threshold')}</ThemedText>
-            <ThemedText>{prediction.threshold_used}</ThemedText>
-          </View>
-          
-          <View style={[styles.resultFooter, { borderTopColor: colors.border }]}>
-            <ThemedText style={{ fontSize: 12, opacity: 0.6 }}>
-              {t('ai.results.type')} {t(`ai.types.${selectedCancerType}`)}
-            </ThemedText>
-            <ThemedText style={{ fontSize: 12, opacity: 0.6 }}>
-              {t('ai.results.time', { time: result.processing_time_ms })}
-            </ThemedText>
-          </View>
-        </View>
-      </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     );
   };
 
   const isAnalyzeDisabled = !selectedCancerType || analyzing;
 
-return (
-  <>
-    <Stack.Screen options={{ title: t('ai.title') }} />
+  return (
+    <>
+      <Stack.Screen options={{ title: t('ai.title') }} />
 
-    <ThemedView style={{ flex: 1 }}>
-      <ScrollView 
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-      >
+      <View style={{ flex: 1 }}>
+        <ThemedView style={{ flex: 1 }}>
+                    <ScrollView 
+                      contentContainerStyle={{ padding: 24, paddingBottom: 120 }}
+                      showsVerticalScrollIndicator={true}
+                    >
+                      {/* العنوان */}
+                      <ThemedText type="title" style={styles.header}>
+                        {t('ai.title')}
+                      </ThemedText>
+          
+                      <ThemedText style={styles.description}>
+                        {t('ai.description')}
+                      </ThemedText>
+          
+                      {/* قسم اختيار نوع السرطان */}
+                      <View style={styles.section}>
+                        <ThemedText type="subtitle" style={styles.sectionTitle}>
+                          {t('ai.chooseType')}
+                        </ThemedText>
+                        <View style={styles.cancerTypesContainer}>
+                          {CANCER_TYPES.map((cancer) => (
+                            <TouchableOpacity
+                              key={cancer.id}
+                              style={[
+                                styles.cancerTypeButton,
+                                {
+                                  backgroundColor: selectedCancerType === cancer.id 
+                                    ? colors.primary 
+                                    : colors.surface,
+                                  borderColor: selectedCancerType === cancer.id
+                                    ? colors.primary
+                                    : colors.border,
+                                },
+                              ]}
+                              onPress={() => handleCancerTypeSelect(cancer.id)}
+                              disabled={analyzing}
+                            >
+                              <ThemedText
+                                style={{
+                                  color: selectedCancerType === cancer.id
+                                    ? "white"
+                                    : colors.text,
+                                }}
+                              >
+                                {t(`ai.types.${cancer.id}`)}
+                              </ThemedText>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+          
+                      {/* الفورم */}
+                      {selectedCancerType && (
+                        <View style={{ marginTop: 10 }}>
+                          <ThemedText type="subtitle" style={styles.sectionTitle}>
+                            {t('ai.enterData', { type: t(`ai.types.${selectedCancerType}`) })}
+                          </ThemedText>
+                          {renderDataForm()}
+                        </View>
+                      )}
 
-          {/* Header */}
-          <ThemedText type="title" style={styles.header}>
-            {t('ai.title')}
-          </ThemedText>
-
-          <ThemedText style={styles.description}>
-            {t('ai.description')}
-          </ThemedText>
-
-          {/* Cancer Type Selection */}
-          <View style={styles.section}>
-            <ThemedText type="subtitle" style={styles.sectionTitle}>
-              {t('ai.chooseType')}
-            </ThemedText>
-            <View style={styles.cancerTypesContainer}>
-              {CANCER_TYPES.map((cancer) => (
-                <TouchableOpacity
-                  key={cancer.id}
-                  style={[
-                    styles.cancerTypeButton,
-                    {
-                      backgroundColor: selectedCancerType === cancer.id 
-                        ? colors.primary 
-                        : colors.surface,
-                      borderColor:
-                        selectedCancerType === cancer.id
-                          ? colors.primary
-                          : colors.border,
-                    },
-                  ]}
-                  onPress={() => handleCancerTypeSelect(cancer.id)}
-                  disabled={analyzing}
-                >
-                  <ThemedText
-                    style={{
-                      color:
-                        selectedCancerType === cancer.id
-                          ? "white"
-                          : colors.text,
-                    }}
-                  >
-                    {t(`ai.types.${cancer.id}`)}
-                  </ThemedText>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Form */}
-          {selectedCancerType && (
-            <View style={{ marginTop: 10 }}>
-              <ThemedText type="subtitle" style={styles.sectionTitle}>
-                {t('ai.enterData', { type: t(`ai.types.${selectedCancerType}`) })}
-              </ThemedText>
-
-              <View style={{ marginTop: 12 }}>
-                {renderDataForm()}
+            {/* النتيجة */}
+            {!analyzing && result && renderResult()}
+            
+            {/* Loading indicator */}
+            {analyzing && (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <ThemedText style={{ marginTop: 16, textAlign: 'center' }}>
+                  {t('ai.actions.analyzing')}
+                </ThemedText>
               </View>
-            </View>
-          )}
+            )}
+          </ScrollView>
+        </ThemedView>
 
-          {/* Result */}
-          {!analyzing && result && renderResult()}
-      </ScrollView>
-
-      {/* Action Button */}
-      <ThemedView style={styles.fixedButtonContainer}>
-        <TouchableOpacity
-          style={[
-            styles.analyzeButton,
-            {
-              backgroundColor: !isAnalyzeDisabled
-                ? colors.primary
-                : colors.icon + "40",
-            },
-          ]}
-          onPress={handleAnalyze}
-          disabled={isAnalyzeDisabled}
-        >
-          <IconSymbol
-            name="brain.head.profile"
-            size={24}
-            color="white"
-            style={{ marginRight: 8 }}
-          />
-          <ThemedText style={styles.buttonText}>{t('ai.actions.analyze')}</ThemedText>
-        </TouchableOpacity>
-      </ThemedView>
-    </ThemedView>
-  </>
-);
+        {/* زر التحليل ثابت أسفل الشاشة */}
+        <ThemedView style={styles.fixedButtonContainer}>
+          <TouchableOpacity
+            style={[
+              styles.analyzeButton,
+              {
+                backgroundColor: !isAnalyzeDisabled
+                  ? colors.primary
+                  : colors.icon + "40",
+              },
+            ]}
+            onPress={handleAnalyze}
+            disabled={isAnalyzeDisabled}
+          >
+            <IconSymbol
+              name="brain.head.profile"
+              size={24}
+              color="white"
+              style={{ marginRight: 8 }}
+            />
+            <ThemedText style={styles.buttonText}>{t('ai.actions.analyze')}</ThemedText>
+          </TouchableOpacity>
+        </ThemedView>
+      </View>
+    </>
+  );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flexGrow: 1,
+    flex: 1,
     padding: 24,
-    paddingBottom: 120,
   },
   header: {
     marginBottom: 8,
@@ -937,6 +966,21 @@ const styles = StyleSheet.create({
   cancerTypeText: {
     fontWeight: '600',
     fontSize: 14,
+  },
+  thresholdContainer: {
+    marginBottom: 20,
+    marginTop: 10,
+  },
+  thresholdLabel: {
+    fontSize: 14,
+    marginBottom: 8,
+    opacity: 0.8,
+  },
+  thresholdInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
   },
   fullFormContainer: {
     width: '100%',
@@ -1014,6 +1058,7 @@ const styles = StyleSheet.create({
   loadingContainer: {
     marginVertical: 24,
     padding: 20,
+    alignItems: 'center',
   },
   resultContainer: {
     padding: 20,
@@ -1072,5 +1117,32 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: 34,
     backgroundColor: 'transparent',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  resultCard: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 1,
   },
 });

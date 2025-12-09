@@ -206,7 +206,8 @@
           "serverError": "Error connecting to server"
       },
       "actions": {
-          "analyze": "Start Analysis"
+          "analyze": "Start Analysis",
+          "analyzing": "Analyzing..."
       }
   },
   "navigation": {

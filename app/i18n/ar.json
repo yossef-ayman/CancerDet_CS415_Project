@@ -206,7 +206,8 @@
           "serverError": "حدث خطأ أثناء الاتصال بالسيرفر"
       },
       "actions": {
-          "analyze": "بدء التحليل"
+          "analyze": "بدء التحليل",
+          "analyzing": "جاري التحليل..."
       }
   },
   "navigation": {
