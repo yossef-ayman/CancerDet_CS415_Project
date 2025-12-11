@@ -24,7 +24,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 const { width } = Dimensions.get('window');
 
 // عنوان السيرفر - غيره حسب احتياجك
-const API_BASE_URL = 'http://192.168.1.96:8000'; // استبدل بعنوان السيرفر الحقيقي
+const API_BASE_URL = 'http://192.168.1.13:8000'; // استبدل بعنوان السيرفر الحقيقي
 // أو استخدم localhost للتجربة على المحاكي: http://localhost:8000
 
 // أنواع السرطان المتاحة
@@ -435,7 +435,7 @@ export default function AiAnalysisScreen() {
                   setLungData(prev => ({
                     ...prev,
                     age: text,
-                    cumulative_smoking: (parseFloat(text) || 0) * (parseFloat(prev.pack_years) || 0)
+                    cumulative_smoking: ((parseFloat(text) || 0) * (parseFloat(prev.pack_years) || 0)).toString()
                   }))
                 }
                 placeholder={t('ai.forms.lung.placeholders.age')}
@@ -453,7 +453,7 @@ export default function AiAnalysisScreen() {
                   setLungData(prev => ({
                     ...prev,
                     pack_years: text,
-                    cumulative_smoking: (parseFloat(prev.age) || 0) * (parseFloat(text) || 0)
+                    cumulative_smoking: ((parseFloat(prev.age) || 0) * (parseFloat(text) || 0)).toString()
                   }))
                 }
                 placeholder={t('ai.forms.lung.placeholders.packYears')}
@@ -730,7 +730,7 @@ export default function AiAnalysisScreen() {
     const resultColor = isPositive ? colors.error : colors.success;
     const riskLevelColors: Record<string, string> = {
       high: colors.error,
-      medium: colors.warning,
+      medium: colors.accent,
       low: colors.success
     };
 
