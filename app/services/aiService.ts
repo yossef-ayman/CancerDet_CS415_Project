@@ -1,8 +1,20 @@
 // services/aiService.ts
 import axios from 'axios';
+import Constants from 'expo-constants';
 
-// تأكد من تغيير هذا الرابط إلى IP حاسوبك
-const API_URL = 'http://10.249.162.13:8000';
+// تحديد عنوان السيرفر تلقائياً
+const getApiBaseUrl = () => {
+  const debuggerHost = Constants.expoConfig?.hostUri;
+  const localhost = debuggerHost?.split(':')[0];
+
+  if (localhost) {
+    return `http://${localhost}:8000`;
+  }
+
+  return 'http://10.249.162.13:8000';
+};
+
+const API_URL = getApiBaseUrl();
 
 const aiApi = axios.create({
   baseURL: API_URL,

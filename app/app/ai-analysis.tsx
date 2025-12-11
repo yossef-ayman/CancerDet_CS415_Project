@@ -13,6 +13,7 @@ import {
   TouchableWithoutFeedback 
 } from 'react-native';
 import { Stack } from 'expo-router';
+import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
 
 import { ThemedText } from '@/components/themed-text';
@@ -23,9 +24,21 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 
 const { width } = Dimensions.get('window');
 
-// عنوان السيرفر - غيره حسب احتياجك
-const API_BASE_URL = 'http://192.168.1.13:8000'; // استبدل بعنوان السيرفر الحقيقي
-// أو استخدم localhost للتجربة على المحاكي: http://localhost:8000
+// تحديد عنوان السيرفر تلقائياً
+const getApiBaseUrl = () => {
+  // الحصول على عنوان المضيف من إعدادات Expo
+  const debuggerHost = Constants.expoConfig?.hostUri;
+  const localhost = debuggerHost?.split(':')[0];
+
+  if (localhost) {
+    return `http://${localhost}:8000`;
+  }
+
+  // Fallback if not in development or hostUri is undefined
+  return 'http://10.247.112.22:8000';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 // أنواع السرطان المتاحة
 const CANCER_TYPES = [
