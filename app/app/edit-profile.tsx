@@ -63,10 +63,12 @@ export default function EditProfileScreen() {
     }
   });
 
-  const [selectedAvatar, setSelectedAvatar] = useState(userProfile?.photoURL || `https://i.pravatar.cc/300?u=${userProfile?.uid}`);
+  const [selectedAvatar, setSelectedAvatar] = useState(userProfile?.photoURL || 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png');
   
-  // Predefined avatars
-  const AVATAR_OPTIONS = Array.from({ length: 8 }, (_, i) => `https://i.pravatar.cc/300?img=${i + 1}`);
+  // Generic / Icon Options
+  const AVATAR_OPTIONS = [
+      'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png'
+  ];
 
   const onSubmit = async (data: ProfileFormValues) => {
     if (!user) return;
@@ -121,7 +123,7 @@ export default function EditProfileScreen() {
                                 ]}
                             >
                                 {/* We use View/Image for avatar preview. Assuming React Native Image or Expo Image */}
-                                <View style={{ width: 60, height: 60, borderRadius: 30, overflow: 'hidden', backgroundColor: '#ddd' }}>
+                                <View style={{ width: 80, height: 80, borderRadius: 40, overflow: 'hidden', backgroundColor: '#ddd' }}>
                                      <Image
                                         source={{ uri }}
                                         style={{ width: '100%', height: '100%' }}
