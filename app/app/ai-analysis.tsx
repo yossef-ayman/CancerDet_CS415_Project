@@ -16,6 +16,8 @@ import { Stack } from 'expo-router';
 import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '@/context/auth';
+import { incrementPendingReports } from '@/services/user';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -129,6 +131,7 @@ interface PredictionResult {
 
 export default function AiAnalysisScreen() {
   const { t } = useTranslation();
+  const { userProfile } = useAuth();
   const colorScheme = useColorScheme();
   const theme = colorScheme ?? 'light';
   // @ts-ignore
@@ -450,11 +453,18 @@ export default function AiAnalysisScreen() {
                            }
                        });
                        return newData;
-                  });
-                  count = Object.keys(extracted).length;
+                   });
+                   count = Object.keys(extracted).length;
               }
 
-              Alert.alert(t('home.aiPrediction'), `Extracted data from Report!`);
+              // Notify Linked Doctor
+              if (userProfile?.linkedDoctorId) {
+                  await incrementPendingReports(userProfile.linkedDoctorId);
+              }
+
+              Alert.alert('Success', `Extracted ${count} values from report.`);
+          } else {
+              Alert.alert('Analysis Failed', 'Could not extract valid data.');
           }
 
       } catch (error: any) {
