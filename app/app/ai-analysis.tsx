@@ -405,6 +405,16 @@ export default function AiAnalysisScreen() {
                       if (newData.age && newData.pack_years) {
                           newData.cumulative_smoking = (parseFloat(newData.age) * parseFloat(newData.pack_years)).toString();
                       }
+                      
+                      // Categorical & Boolean
+                      if (extracted.gender) newData.gender = extracted.gender;
+                      if (extracted.radon_exposure) newData.radon_exposure = extracted.radon_exposure;
+                      if (extracted.alcohol_consumption) newData.alcohol_consumption = extracted.alcohol_consumption;
+                      if (extracted.family_history !== undefined) newData.family_history = extracted.family_history;
+                      if (extracted.asbestos_exposure !== undefined) newData.asbestos_exposure = extracted.asbestos_exposure;
+                      if (extracted.secondhand_smoke_exposure !== undefined) newData.secondhand_smoke_exposure = extracted.secondhand_smoke_exposure;
+                      if (extracted.copd_diagnosis !== undefined) newData.copd_diagnosis = extracted.copd_diagnosis;
+
                       return newData;
                   });
                   count = Object.keys(extracted).length;
@@ -414,10 +424,18 @@ export default function AiAnalysisScreen() {
                       const newData = { ...prev };
                       if (extracted.age) newData.Age = extracted.age.toString();
                       if (extracted.bmi) newData.BMI = extracted.bmi.toString();
+                      
+                      // Categorical
+                      if (extracted.gender) newData.Gender = extracted.gender;
+                      if (extracted.lifestyle) newData.Lifestyle = extracted.lifestyle;
+                      if (extracted.family_history !== undefined) newData.Family_History_CRC = extracted.family_history;
+
                       if (extracted.carbs) newData['Carbohydrates (g)'] = extracted.carbs.toString();
                       if (extracted.proteins) newData['Proteins (g)'] = extracted.proteins.toString();
                       if (extracted.fats) newData['Fats (g)'] = extracted.fats.toString();
                       if (extracted.vitA) newData['Vitamin A (IU)'] = extracted.vitA.toString();
+                      if (extracted.vitC) newData['Vitamin C (mg)'] = extracted.vitC.toString();
+                      if (extracted.iron) newData['Iron (mg)'] = extracted.iron.toString();
                       return newData;
                   });
                   count = Object.keys(extracted).length;

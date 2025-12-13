@@ -301,10 +301,53 @@ def fuzzy_extract(text, keys, is_numeric=True):
     
     return best_val
 
+def fuzzy_extract_category(text, keys, options_map):
+    """
+    Scans text for keys (e.g. "Gender"). If found, looks for options (e.g. "Male", "Female") near the key.
+    Returns the mapped value.
+    text: Full PDF text
+    keys: List of keywords to find the section (e.g. ["Gender", "Sex"])
+    options_map: Dict of { "Text in Report": "Value to Return" }
+                 e.g. { "Male": "Male", "M": "Male", "Female": "Female", "F": "Female" }
+    """
+    lines = text.split('\n')
+    
+    # Improved strategy: 
+    # 1. Fuzzy match for the KEY (in case of typos/variations)
+    # 2. Look for options in that line AND the next line (multiline support)
+    for i, line in enumerate(lines):
+        # Check for Key Match
+        key_match = False
+        for key in keys:
+            # simple check
+            if key.lower() in line.lower():
+                key_match = True
+                break
+            # fuzzy check if simple fails
+            if fuzz.partial_ratio(key.lower(), line.lower()) > 85:
+                key_match = True
+                break
+        
+        if key_match:
+            # Text chunk to search = Current Line + Next Line (to handle wrapped text)
+            text_chunk = line.lower()
+            if i + 1 < len(lines):
+                text_chunk += " " + lines[i+1].lower()
+
+            # Look for options in this chunk
+            for option_text, return_val in options_map.items():
+                # Regex boundary check \bKEY\b
+                # e.g. "No" inside "None" won't match, but "No," or "No " will.
+                pattern = r"(?<!\w)" + re.escape(option_text.lower()) + r"(?!\w)"
+                if re.search(pattern, text_chunk):
+                    return return_val
+                    
+    return None
+
 def process_pdf_logic(type: str, file_bytes: bytes):
     text = extract_text_from_pdf_sync(file_bytes)
     
-    # 1. Validation (Is it medical?)
+    # 1. Validation
     valid_keywords = ["report", "lab", "analysis", "patient", "medical", "blood", "scan", "diagnosis"]
     valid_score = 0
     for kw in valid_keywords:
@@ -316,20 +359,92 @@ def process_pdf_logic(type: str, file_bytes: bytes):
 
     extracted_data = {}
 
-    # 2. Extraction Logic based on Type
     print(f"   Extracting features for {type}...")
+    
     if type == "lung":
-        # Lung Keys: Age, Pack Years, Radon...
+        # Numerical
         extracted_data["age"] = fuzzy_extract(text, ["Age", "Patient Age", "DOB", "Years old"])
         extracted_data["packYears"] = fuzzy_extract(text, ["Pack Years", "Smoking History", "Packs per day"])
         
+        # Categorical
+        extracted_data["gender"] = fuzzy_extract_category(text, ["Gender", "Sex"], {
+            "Male": "Male", "M": "Male", "Man": "Male",
+            "Female": "Female", "F": "Female", "Woman": "Female"
+        })
+        
+        extracted_data["radon_exposure"] = fuzzy_extract_category(text, ["Radon"], {
+            "High": "High", "Elevated": "High",
+            "Medium": "Medium", "Moderate": "Medium",
+            "Low": "Low", "Normal": "Low", "Safe": "Low"
+        })
+
+        extracted_data["alcohol_consumption"] = fuzzy_extract_category(text, ["Alcohol"], {
+            "Heavy": "High", "High": "High",
+            "Moderate": "Moderate", "Occasional": "Moderate",
+            "None": "None", "No": "None", "Non-drinker": "None"
+        })
+
+        # Boolean
+        family_hist = fuzzy_extract_category(text, ["Family History", "History of Cancer"], {
+            "Yes": True, "Positive": True, "Present": True,
+            "No": False, "Negative": False, "Absent": False,
+            # Implicit Positive Keywords
+            "Father": True, "Mother": True, "Dad": True, "Mom": True,
+            "Brother": True, "Sister": True, "Parent": True,
+            "Grandfather": True, "Grandmother": True, "Relative": True,
+            "Died": True, "Diagnosed": True
+        })
+        if family_hist is not None:
+            extracted_data["family_history"] = family_hist
+        
+        # Others (defaults to false usually, but try extract)
+        extracted_data["asbestos_exposure"] = fuzzy_extract_category(text, ["Asbestos"], {
+            "Yes": True, "Positive": True, "Exposed": True,
+            "No": False, "Negative": False
+        })
+        
+        extracted_data["secondhand_smoke_exposure"] = fuzzy_extract_category(text, ["Secondhand Smoke", "Passive Smoking", "Second-hand"], {
+            "Yes": True, "Positive": True, "Exposed": True,
+            "No": False, "Negative": False, "None": False
+        })
+
+        extracted_data["copd_diagnosis"] = fuzzy_extract_category(text, ["COPD", "Chronic Obstructive", "Lung Disease"], {
+            "Yes": True, "Positive": True, "Diagnosed": True,
+            "No": False, "Negative": False, "None": False
+        })
+
     elif type == "colorectal":
         extracted_data["age"] = fuzzy_extract(text, ["Age", "Years old"])
         extracted_data["bmi"] = fuzzy_extract(text, ["BMI", "Body Mass Index"])
+        
+        extracted_data["gender"] = fuzzy_extract_category(text, ["Gender", "Sex"], {
+            "Male": "Male", "Female": "Female"
+        })
+
+        extracted_data["lifestyle"] = fuzzy_extract_category(text, ["Lifestyle", "Activity", "Exercise"], {
+            "Very Active": "Very Active", "Athlete": "Very Active",
+            "Active": "Active", "Moderate": "Active", 
+            "Sedentary": "Sedentary", "Low": "Sedentary", "Inactive": "Sedentary",
+            "Smoker": "Smoker", "Smoking": "Smoker"
+        })
+        
+        extracted_data["family_history"] = fuzzy_extract_category(text, ["Family History", "History of CRC"], {
+            "Yes": True, "Positive": True,
+            "No": False, "Negative": False,
+            # Implicit Positive Keywords
+            "Father": True, "Mother": True, "Dad": True, "Mom": True,
+            "Brother": True, "Sister": True, "Parent": True,
+            "Grandfather": True, "Grandmother": True, "Relative": True,
+            "Died": True, "Diagnosed": True
+        })
+
+        # Basic nutritional info if present
         extracted_data["carbs"] = fuzzy_extract(text, ["Carbohydrates", "Carbs"])
         extracted_data["proteins"] = fuzzy_extract(text, ["Proteins", "Protein"])
         extracted_data["fats"] = fuzzy_extract(text, ["Fats", "Fat"])
         extracted_data["vitA"] = fuzzy_extract(text, ["Vitamin A", "Vit A"])
+        extracted_data["vitC"] = fuzzy_extract(text, ["Vitamin C", "Vit C", "Ascorbic Acid"])
+        extracted_data["iron"] = fuzzy_extract(text, ["Iron", "Fe", "Ferritin"])
         
     elif type == "breast":
         features = MODELS_INFO["breast"]["features"]
