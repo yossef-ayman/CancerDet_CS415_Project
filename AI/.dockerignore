@@ -1,0 +1,9 @@
+.expo
+.expo-shared
+dist
+.git
+.gitignore
+*.md
+.env.local
+.env.*.local
+

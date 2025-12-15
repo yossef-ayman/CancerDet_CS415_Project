@@ -39,7 +39,7 @@ const getApiBaseUrl = () => {
 
   // Fallback if not in development or hostUri is undefined
   // Updated to current local IP:
-  return 'http://192.168.1.13:8000';
+  return 'http://192.168.1.11:8000';
 };
 
 const API_BASE_URL = getApiBaseUrl();

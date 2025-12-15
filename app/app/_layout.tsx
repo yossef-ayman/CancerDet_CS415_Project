@@ -65,6 +65,38 @@ export default function RootLayout() {
             }} 
           />
           <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
+          <Stack.Screen 
+            name="privacy-security" 
+            options={{ 
+              title: 'Privacy & Security',
+              headerStyle: { backgroundColor: themeColors.surface },
+              headerTintColor: themeColors.text,
+            }} 
+          />
+          <Stack.Screen 
+            name="address" 
+            options={{ 
+              title: 'Address',
+              headerStyle: { backgroundColor: themeColors.surface },
+              headerTintColor: themeColors.text,
+            }} 
+          />
+          <Stack.Screen 
+            name="book-appointment" 
+            options={{ 
+              title: 'Book Appointment',
+              headerStyle: { backgroundColor: themeColors.surface },
+              headerTintColor: themeColors.text,
+            }} 
+          />
+          <Stack.Screen 
+            name="help" 
+            options={{ 
+              title: 'Help & Instructions',
+              headerStyle: { backgroundColor: themeColors.surface },
+              headerTintColor: themeColors.text,
+            }} 
+          />
         </Stack>
         <StatusBar style="auto" />
       </ThemeProvider>

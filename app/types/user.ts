@@ -1,17 +1,30 @@
 export type UserRole = 'doctor' | 'patient';
 
+export interface PrivacySettings {
+  profileVisibility: 'public' | 'contacts' | 'private';
+  showMedicalInfo: boolean;
+  allowMessagesFrom: 'all' | 'contacts' | 'doctors';
+  showOnlineStatus: boolean;
+  shareDataForResearch: boolean;
+  twoFactorAuth: boolean;
+}
+
 export interface UserProfile {
   uid: string;
   email: string;
   displayName: string;
   role: UserRole;
   photoURL?: string;
+  phoneNumber?: string;
+  address?: string;
+  bio?: string;
   createdAt: number; // Timestamp
   stats?: {
       patientCount: number;
       pendingReports: number;
   };
   linkedDoctorId?: string; // For patients linked to a doctor
+  privacySettings?: PrivacySettings;
 }
 
 export interface PatientProfile extends UserProfile {

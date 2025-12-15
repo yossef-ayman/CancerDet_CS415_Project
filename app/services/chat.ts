@@ -107,12 +107,23 @@ import {
   };
   
   // Send a message
-  export const sendMessage = async (chatId: string, payload: { text: string; type: 'text' | 'file'; file?: any }, sender: UserProfile) => {
+  export const sendMessage = async (
+    chatId: string, 
+    payload: { 
+      text: string; 
+      type: 'text' | 'file'; 
+      fileUrl?: string;
+      fileName?: string;
+      fileSize?: number;
+      mimeType?: string;
+    }, 
+    sender: UserProfile
+  ) => {
     try {
       const messagesRef = collection(db, 'chats', chatId, 'messages');
       const chatRef = doc(db, 'chats', chatId);
       const timestamp = Date.now();
-  
+
       const newMessage: any = {
         text: payload.text,
         type: payload.type || 'text',
@@ -124,26 +135,33 @@ import {
         }
       };
 
-      if (payload.type === 'file' && payload.file) {
-          newMessage.file = payload.file;
+      // Add file metadata if it's a file
+      if (payload.type === 'file' && payload.fileUrl) {
+        newMessage.fileUrl = payload.fileUrl;
+        newMessage.fileName = payload.fileName || 'File';
+        newMessage.fileSize = payload.fileSize || 0;
+        newMessage.mimeType = payload.mimeType || 'application/pdf';
       }
-  
+
       // 1. Add message to subcollection
       await addDoc(messagesRef, newMessage);
-  
+
       // 2. Update parent chat with last message
-      // Don't store full file content in lastMessage to save bandwidth on list view
-      const lastMessageData = { ...newMessage };
-      if (lastMessageData.type === 'file') {
-          delete lastMessageData.file; // Remove heavy content
-          lastMessageData.text = '📎 Medical Report'; // Placeholder text
-      }
+      const lastMessageData = {
+        text: payload.type === 'file' ? `📎 ${payload.fileName || 'File'}` : payload.text,
+        type: payload.type,
+        createdAt: timestamp,
+        user: {
+          _id: sender.uid,
+          name: sender.displayName,
+        }
+      };
 
       await updateDoc(chatRef, {
         lastMessage: lastMessageData,
         updatedAt: timestamp
       });
-  
+
     } catch (error) {
       console.error('Error sending message:', error);
       throw error;

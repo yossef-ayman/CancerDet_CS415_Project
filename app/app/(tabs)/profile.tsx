@@ -127,9 +127,17 @@ export default function ProfileScreen() {
               onPress={() => router.push('/edit-profile')}
             />
             <View style={styles.separator} />
-            <SettingItem icon="gearshape.fill" title={t('profile.privacy')} />
+            <SettingItem 
+              icon="gearshape.fill" 
+              title={t('profile.privacy')}
+              onPress={() => router.push('/privacy-security')}
+            />
             <View style={styles.separator} />
-            <SettingItem icon="house.fill" title={t('profile.address')} />
+            <SettingItem 
+              icon="house.fill" 
+              title={t('profile.address')}
+              onPress={() => router.push('/address')}
+            />
             <View style={styles.separator} />
             <SettingItem 
               icon="globe" 
@@ -149,6 +157,12 @@ export default function ProfileScreen() {
               type="switch" 
               value={true} 
               onPress={() => {}} 
+            />
+            <View style={styles.separator} />
+            <SettingItem 
+              icon="questionmark.circle.fill" 
+              title={t('help.title')}
+              onPress={() => router.push('/help')}
             />
           </ThemedView>
         </View>

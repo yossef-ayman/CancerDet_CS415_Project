@@ -1,10 +1,24 @@
 import { Image } from 'expo-image';
-import { StyleSheet, View, TouchableOpacity, Alert, ScrollView, Dimensions, Modal, Pressable } from 'react-native';
+import { 
+  StyleSheet, 
+  View, 
+  TouchableOpacity, 
+  Alert, 
+  ScrollView, 
+  Dimensions, 
+  Modal, 
+  Pressable,
+  FlatList,
+  TextInput,
+  ActivityIndicator
+} from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as Clipboard from 'expo-clipboard';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Calendar } from 'react-native-calendars';
 
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
@@ -13,13 +27,15 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/context/auth';
+import { createAppointment, getAvailableDoctors, getUpcomingAppointments, getDoctorSchedule } from '@/services/appointment';
+import { UserProfile, Appointment } from '@/types/user';
 
 const { width } = Dimensions.get('window');
 const isSmallScreen = width < 380;
 
 export default function HomeScreen() {
   const { t } = useTranslation();
-  const { userProfile } = useAuth();
+  const { userProfile, getLinkedDoctors, getLinkedPatients } = useAuth();
   const router = useRouter();
   const colorScheme = useColorScheme();
   const theme = colorScheme ?? 'light';
@@ -28,27 +44,87 @@ export default function HomeScreen() {
 
   const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
   const [codeModalVisible, setCodeModalVisible] = useState(false);
+  const [appointmentModalVisible, setAppointmentModalVisible] = useState(false);
+  const [doctorsModalVisible, setDoctorsModalVisible] = useState(false);
+  const [availableDoctors, setAvailableDoctors] = useState<UserProfile[]>([]);
+  const [upcomingAppointments, setUpcomingAppointments] = useState<Appointment[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingDoctors, setLoadingDoctors] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedTime, setSelectedTime] = useState('');
+  const [selectedDoctor, setSelectedDoctor] = useState<UserProfile | null>(null);
+  const [appointmentReason, setAppointmentReason] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [calendarMarkedDates, setCalendarMarkedDates] = useState({});
+  const [linkedDoctors, setLinkedDoctors] = useState<UserProfile[]>([]);
+  const [linkedPatients, setLinkedPatients] = useState<UserProfile[]>([]);
 
-  // Mock Data
-  // Mock Data (Empty for now until real activity logic is added)
-  const recentActivity: any[] = [
-    // { id: '1', title: 'Consultation with Dr. Smith', subtitle: 'General Checkup', date: 'Oct 24', icon: 'stethoscope' },
-  ];
+  // Load data on mount
+  useEffect(() => {
+    loadData();
+  }, [userProfile]);
 
-  const upcomingAppointments = [
-    { id: '1', doctor: 'Dr. Sarah Wilson', type: 'Cardiology', date: 'Nov 12, 10:00 AM' },
-  ];
+  const loadData = async () => {
+    if (!userProfile) return;
+    
+    setLoading(true);
+    try {
+      // Load upcoming appointments
+      const appointments = await getUpcomingAppointments(userProfile.uid);
+      setUpcomingAppointments(appointments);
+      
+      // Load linked profiles
+      if (userProfile.role === 'patient' && getLinkedDoctors) {
+        const doctors = await getLinkedDoctors();
+        setLinkedDoctors(doctors);
+      } else if (userProfile.role === 'doctor' && getLinkedPatients) {
+        const patients = await getLinkedPatients();
+        setLinkedPatients(patients);
+      }
+      
+      // Prepare calendar marked dates
+      const markedDates: any = {};
+      appointments.forEach(appointment => {
+        const dateStr = new Date(appointment.date).toISOString().split('T')[0];
+        markedDates[dateStr] = {
+          selected: true,
+          selectedColor: colors.primary,
+          dotColor: 'white',
+        };
+      });
+      setCalendarMarkedDates(markedDates);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAvailableDoctors = async () => {
+    setLoadingDoctors(true);
+    try {
+      const doctors = await getAvailableDoctors();
+      setAvailableDoctors(doctors);
+      setDoctorsModalVisible(true);
+    } catch (error) {
+      console.error('Error loading doctors:', error);
+      Alert.alert('Error', 'Failed to load available doctors');
+    } finally {
+      setLoadingDoctors(false);
+    }
+  };
 
   const handleDocumentPick = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
+        type: ['application/pdf', 'image/*'],
         copyToCacheDirectory: true,
       });
 
       if (!result.canceled) {
         setUploadedFiles(prev => [...prev, result.assets[0]]);
-        Alert.alert('Success', 'PDF Uploaded Successfully');
+        Alert.alert('Success', 'File Uploaded Successfully');
       }
     } catch (err) {
       console.error(err);
@@ -60,27 +136,193 @@ export default function HomeScreen() {
     router.push('/ai-analysis');
   };
 
-  const QuickAction = ({ icon, label, onPress, color }: any) => (
-      <TouchableOpacity 
-        style={[styles.quickAction, { backgroundColor: colors.surface, borderColor: colors.border }]} 
-        onPress={onPress}
-      >
-          <View style={[styles.quickActionIcon, { backgroundColor: color + '15' }]}>
-              <IconSymbol name={icon} size={24} color={color} />
-          </View>
-          <ThemedText style={styles.quickActionLabel} numberOfLines={2}>{label}</ThemedText>
-      </TouchableOpacity>
+  const handleBookAppointment = async () => {
+    if (!selectedDoctor || !selectedTime || !appointmentReason.trim()) {
+      Alert.alert('Error', 'Please fill all required fields');
+      return;
+    }
+
+    if (!userProfile) return;
+
+    setLoading(true);
+    try {
+      await createAppointment({
+        patientId: userProfile.uid,
+        patientName: userProfile.displayName,
+        doctorId: selectedDoctor.uid,
+        doctorName: selectedDoctor.displayName,
+        date: selectedDate.toISOString().split('T')[0],
+        time: selectedTime,
+        reason: appointmentReason,
+        type: 'consultation',
+        status: 'pending',
+      });
+
+      Alert.alert('Success', 'Appointment booked successfully');
+      setAppointmentModalVisible(false);
+      setSelectedDoctor(null);
+      setSelectedTime('');
+      setAppointmentReason('');
+      loadData(); // Refresh data
+    } catch (error) {
+      console.error('Error booking appointment:', error);
+      Alert.alert('Error', 'Failed to book appointment');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const QuickAction = ({ icon, label, onPress, color, disabled = false }: any) => (
+    <TouchableOpacity 
+      style={[
+        styles.quickAction, 
+        { 
+          backgroundColor: colors.surface, 
+          borderColor: colors.border,
+          opacity: disabled ? 0.5 : 1
+        }
+      ]} 
+      onPress={onPress}
+      disabled={disabled}
+    >
+      <View style={[styles.quickActionIcon, { backgroundColor: color + '15' }]}>
+        <IconSymbol name={icon} size={24} color={color} />
+      </View>
+      <ThemedText style={styles.quickActionLabel} numberOfLines={2}>{label}</ThemedText>
+    </TouchableOpacity>
   );
 
-  const InfoCard = ({ title, value, subtext, icon, color }: any) => (
-      <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.infoCardHeader}>
-              <ThemedText style={[styles.infoCardTitle, { color: colors.secondary }]}>{title}</ThemedText>
-              <IconSymbol name={icon} size={16} color={color} />
-          </View>
-          <ThemedText type="title" style={{ fontSize: 24, marginVertical: 4 }}>{value}</ThemedText>
-          {subtext && <ThemedText style={styles.infoCardSubtext}>{subtext}</ThemedText>}
+  const InfoCard = ({ title, value, subtext, icon, color, onPress }: any) => (
+    <TouchableOpacity 
+      style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      onPress={onPress}
+      activeOpacity={onPress ? 0.7 : 1}
+    >
+      <View style={styles.infoCardHeader}>
+        <ThemedText style={[styles.infoCardTitle, { color: colors.secondary }]}>{title}</ThemedText>
+        <IconSymbol name={icon} size={16} color={color} />
       </View>
+      <ThemedText type="title" style={{ fontSize: 24, marginVertical: 4 }}>{value}</ThemedText>
+      {subtext && <ThemedText style={styles.infoCardSubtext}>{subtext}</ThemedText>}
+    </TouchableOpacity>
+  );
+
+  const AppointmentCard = ({ appointment }: { appointment: Appointment }) => {
+    const appointmentDate = new Date(`${appointment.date}T${appointment.time}`);
+    const isToday = new Date().toDateString() === appointmentDate.toDateString();
+    
+    return (
+      <TouchableOpacity 
+        style={[styles.appointmentCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        onPress={() => router.push(`/appointment-details/${appointment.id}`)}
+      >
+        <View style={styles.appointmentHeader}>
+          <View style={[styles.appointmentStatus, { 
+            backgroundColor: 
+              appointment.status === 'confirmed' ? '#DCFCE7' :
+              appointment.status === 'pending' ? '#FEF9C3' :
+              appointment.status === 'cancelled' ? '#FEE2E2' : '#E0F2FE'
+          }]}>
+            <ThemedText style={[styles.statusText, {
+              color: 
+                appointment.status === 'confirmed' ? '#166534' :
+                appointment.status === 'pending' ? '#854D0E' :
+                appointment.status === 'cancelled' ? '#991B1B' : '#075985'
+            }]}>
+              {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+            </ThemedText>
+          </View>
+          {isToday && (
+            <View style={styles.todayBadge}>
+              <ThemedText style={styles.todayText}>Today</ThemedText>
+            </View>
+          )}
+        </View>
+        
+        <ThemedText type="defaultSemiBold" style={styles.appointmentTitle}>
+          {userProfile?.role === 'patient' ? appointment.doctorName : appointment.patientName}
+        </ThemedText>
+        
+        <View style={styles.appointmentDetails}>
+          <View style={styles.detailItem}>
+            <IconSymbol name="calendar" size={14} color={colors.secondary} />
+            <ThemedText style={[styles.detailText, { color: colors.secondary }]}>
+              {appointmentDate.toLocaleDateString('en-US', { 
+                weekday: 'short', 
+                month: 'short', 
+                day: 'numeric' 
+              })}
+            </ThemedText>
+          </View>
+          
+          <View style={styles.detailItem}>
+            <IconSymbol name="clock" size={14} color={colors.secondary} />
+            <ThemedText style={[styles.detailText, { color: colors.secondary }]}>
+              {appointment.time}
+            </ThemedText>
+          </View>
+          
+          <View style={styles.detailItem}>
+            <IconSymbol name="stethoscope" size={14} color={colors.secondary} />
+            <ThemedText style={[styles.detailText, { color: colors.secondary }]}>
+              {appointment.type}
+            </ThemedText>
+          </View>
+        </View>
+        
+        <ThemedText style={[styles.reasonText, { color: colors.secondary }]} numberOfLines={2}>
+          {appointment.reason}
+        </ThemedText>
+      </TouchableOpacity>
+    );
+  };
+
+  const DoctorCard = ({ doctor, onSelect }: { doctor: UserProfile, onSelect: () => void }) => (
+    <TouchableOpacity 
+      style={[styles.doctorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      onPress={onSelect}
+    >
+      <Image
+        source={{ uri: doctor.photoURL || 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png' }}
+        style={styles.doctorAvatar}
+      />
+      <View style={styles.doctorInfo}>
+        <ThemedText type="defaultSemiBold" style={styles.doctorName}>
+          {doctor.displayName}
+        </ThemedText>
+        {/* @ts-ignore */}
+        <ThemedText style={[styles.doctorSpecialty, { color: colors.secondary }]}>
+          {doctor.specialty || 'General Practitioner'}
+        </ThemedText>
+        <View style={styles.doctorMeta}>
+          {/* @ts-ignore */}
+          {doctor.experienceYears && (
+            <ThemedText style={[styles.doctorMetaText, { color: colors.secondary }]}>
+              {/* @ts-ignore */}
+              {doctor.experienceYears} yrs exp
+            </ThemedText>
+          )}
+          {/* @ts-ignore */}
+          {doctor.hospital && (
+            <ThemedText style={[styles.doctorMetaText, { color: colors.secondary }]}>
+              {/* @ts-ignore */}
+              • {doctor.hospital}
+            </ThemedText>
+          )}
+        </View>
+        {/* @ts-ignore */}
+        {doctor.rating && (
+          <View style={styles.ratingContainer}>
+            <IconSymbol name="star.fill" size={12} color="#FFD700" />
+            {/* @ts-ignore */}
+            <ThemedText style={styles.ratingText}>{doctor.rating.toFixed(1)}</ThemedText>
+            {/* @ts-ignore */}
+            <ThemedText style={[styles.ratingCount, { color: colors.secondary }]}>({doctor.totalReviews || 0})</ThemedText>
+          </View>
+        )}
+      </View>
+      <IconSymbol name="chevron.right" size={20} color={colors.secondary} />
+    </TouchableOpacity>
   );
 
   return (
@@ -90,17 +332,27 @@ export default function HomeScreen() {
         light: colors.surface,
       }}
       headerImage={
-          <View style={[styles.headerContainer, { backgroundColor: colors.primary }]}>
-              <View style={styles.headerContent}>
-                  <ThemedText style={styles.greetingText}>{t('home.welcome')}</ThemedText>
-                  <ThemedText style={styles.nameText}>{userProfile?.displayName || 'User'}</ThemedText>
-                  <ThemedText style={styles.roleText}>{userProfile?.role === 'doctor' ? t('home.doctor') : t('home.patient')}</ThemedText>
-              </View>
-              <IconSymbol name="person.fill" size={80} color="rgba(255,255,255,0.2)" style={styles.headerIcon} />
+        <View style={[styles.headerContainer, { backgroundColor: colors.primary }]}>
+          <View style={styles.headerContent}>
+            <ThemedText style={styles.greetingText}>
+              {new Date().getHours() < 12 ? '🌤️ صباح الخير' : 
+               new Date().getHours() < 18 ? '☀️ مساء الخير' : '🌙 مساء الخير'}
+            </ThemedText>
+            <ThemedText style={styles.nameText}>{userProfile?.displayName || 'User'}</ThemedText>
+            <ThemedText style={styles.roleText}>
+              {userProfile?.role === 'doctor' ? '👨‍⚕️ طبيب' : '👤 مريض'}
+            </ThemedText>
           </View>
+          <IconSymbol 
+            name={userProfile?.role === 'doctor' ? "stethoscope" : "heart.fill"} 
+            size={80} 
+            color="rgba(255,255,255,0.2)" 
+            style={styles.headerIcon} 
+          />
+        </View>
       }
     >
-      {/* Modal for Doctor Code */}
+      {/* Modals */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -110,9 +362,9 @@ export default function HomeScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalView, { backgroundColor: colors.surface }]}>
             <IconSymbol name="qrcode" size={48} color={colors.primary} />
-            <ThemedText type="subtitle" style={{ marginTop: 16, marginBottom: 8 }}>{t('profile.doctorCode')}</ThemedText>
+            <ThemedText type="subtitle" style={{ marginTop: 16, marginBottom: 8 }}>كود الدكتور</ThemedText>
             <ThemedText style={{ textAlign: 'center', opacity: 0.7, marginBottom: 20 }}>
-              {t('profile.shareCodeDesc')}
+              شارك هذا الكود مع المرضى للربط معك
             </ThemedText>
             
             <TouchableOpacity 
@@ -122,143 +374,435 @@ export default function HomeScreen() {
                   const code = userProfile?.doctorCode;
                   if (code) {
                       await Clipboard.setStringAsync(code);
-                      Alert.alert('Copied', 'Doctor code copied to clipboard');
+                      Alert.alert('تم النسخ', 'تم نسخ كود الدكتور');
                   }
               }}
             >
               {/* @ts-ignore */}
-              <ThemedText type="title" style={{ color: colors.primary, letterSpacing: 2 }}>{userProfile?.doctorCode || '----'}</ThemedText>
-              <ThemedText style={{ fontSize: 10, opacity: 0.6, textAlign: 'center', marginTop: 4 }}>Tap to copy</ThemedText>
+              <ThemedText type="title" style={{ color: colors.primary, letterSpacing: 2, fontFamily: 'monospace' }}>
+                {userProfile?.doctorCode || '----'}
+              </ThemedText>
+              <ThemedText style={{ fontSize: 10, opacity: 0.6, textAlign: 'center', marginTop: 4 }}>انقر للنسخ</ThemedText>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.modalButton, { backgroundColor: colors.primary }]}
               onPress={() => setCodeModalVisible(false)}
             >
-              <ThemedText style={styles.modalButtonText}>Close</ThemedText>
+              <ThemedText style={styles.modalButtonText}>إغلاق</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      <View style={styles.contentContainer}>
-          
-          {/* Upload Data to Predict Section */}
-          {userProfile?.role === 'doctor' && (
-            <>
-              <ThemedText type="subtitle" style={styles.sectionTitle}>{t('home.aiPrediction')}</ThemedText>
-              <View style={[styles.aiSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={styles.aiSectionContent}>
-                      <View style={[styles.iconContainer, { backgroundColor: colors.primary + '15' }]}>
-                        <IconSymbol name="doc.text.fill" size={28} color={colors.primary} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <ThemedText type="defaultSemiBold">{t('home.uploadText')}</ThemedText>
-                        <ThemedText style={{ fontSize: 12, opacity: 0.6, marginTop: 2 }}>
-                          {t('home.uploadDesc')}
-                        </ThemedText>
-                      </View>
-                  </View>
-                  <TouchableOpacity 
-                    style={[styles.aiActionButton, { backgroundColor: colors.primary }]}
-                    onPress={handleAiAnalysis}
-                  >
-                    <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>{t('home.startAnalysis')}</ThemedText>
-                  </TouchableOpacity>
+      {/* Doctors Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={doctorsModalVisible}
+        onRequestClose={() => setDoctorsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.largeModalView, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <ThemedText type="title">الأطباء المتاحين</ThemedText>
+              <TouchableOpacity onPress={() => setDoctorsModalVisible(false)}>
+                <IconSymbol name="xmark.circle.fill" size={24} color={colors.secondary} />
+              </TouchableOpacity>
+            </View>
+            
+            {loadingDoctors ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <ThemedText style={{ marginTop: 16, color: colors.secondary }}>جاري تحميل الأطباء...</ThemedText>
               </View>
-            </>
-          )}
-
-          {/* Quick Actions Grid */}
-          <ThemedText type="subtitle" style={styles.sectionTitle}>{t('home.quickActions')}</ThemedText>
-          <View style={styles.quickActionGrid}>
-              {userProfile?.role === 'patient' ? (
-                  <>
-                    <QuickAction 
-                        icon="paperplane.fill" 
-                        label={t('home.newChat')} 
-                        color={colors.primary} 
-                        onPress={() => router.push('/(tabs)/chat')} 
-                    />
-                    <QuickAction 
-                        icon="paperclip" 
-                        label={t('home.uploadReport')} 
-                        color={colors.accent} 
-                        onPress={handleDocumentPick} 
-                    />
-                  </>
-              ) : (
-                  <>
-                     <QuickAction 
-                        icon="qrcode" 
-                        label={t('home.myCode')} 
-                        color={colors.primary} 
-                        onPress={() => setCodeModalVisible(true)} 
-                    />
-                    <QuickAction 
-                        icon="message.fill" 
-                        label={t('home.patientChats')} 
-                        color={colors.success} 
-                        onPress={() => router.push('/(tabs)/chat')} 
-                    />
-                  </>
-              )}
+            ) : availableDoctors.length > 0 ? (
+              <FlatList
+                data={availableDoctors}
+                keyExtractor={(item) => item.uid}
+                renderItem={({ item }) => (
+                  <DoctorCard 
+                    doctor={item} 
+                    onSelect={() => {
+                      setSelectedDoctor(item);
+                      setDoctorsModalVisible(false);
+                      setAppointmentModalVisible(true);
+                    }}
+                  />
+                )}
+                contentContainerStyle={styles.doctorsList}
+                showsVerticalScrollIndicator={false}
+              />
+            ) : (
+              <View style={styles.emptyContainer}>
+                <IconSymbol name="person.slash" size={48} color={colors.secondary} />
+                <ThemedText style={{ marginTop: 16, color: colors.secondary }}>لا توجد أطباء متاحين حالياً</ThemedText>
+              </View>
+            )}
           </View>
+        </View>
+      </Modal>
 
-          {/* Dashboard Stats / Info */}
-          <ThemedText type="subtitle" style={styles.sectionTitle}>{t('home.overview')}</ThemedText>
-          <View style={styles.infoGrid}>
-              {userProfile?.role === 'patient' ? (
-                  <>
-                    <InfoCard 
-                        title={t('home.healthScore')} 
-                        value={(userProfile as any)?.healthScore?.toString() || "0"} 
-                        subtext={(userProfile as any)?.healthScore ? "Last update" : "No data yet"} 
-                        icon="heart.fill" 
-                        color="#E11D48" 
+      {/* Appointment Booking Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={appointmentModalVisible}
+        onRequestClose={() => setAppointmentModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.largeModalView, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <ThemedText type="title">حجز موعد جديد</ThemedText>
+              <TouchableOpacity onPress={() => setAppointmentModalVisible(false)}>
+                <IconSymbol name="xmark.circle.fill" size={24} color={colors.secondary} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.appointmentForm}>
+              {/* Selected Doctor */}
+              {selectedDoctor && (
+                <View style={styles.selectedDoctorContainer}>
+                  <ThemedText style={[styles.label, { color: colors.secondary }]}>الدكتور المختار</ThemedText>
+                  <View style={[styles.selectedDoctorCard, { backgroundColor: colors.primary + '10', borderColor: colors.primary }]}>
+                    <Image
+                      source={{ uri: selectedDoctor.photoURL || 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png' }}
+                      style={styles.smallDoctorAvatar}
                     />
-                    <InfoCard 
-                        title={t('home.nextVisit')} 
-                        value={(userProfile as any)?.nextVisit || "Pending"} 
-                        subtext={(userProfile as any)?.linkedDoctorId ? "Dr. Connected" : "No Doctor Linked"} 
-                        icon="calendar" 
-                        color={colors.primary} 
-                    />
-                  </>
-              ) : (
-                  <>
-                     <InfoCard title={t('home.patients')} value={userProfile?.stats?.patientCount?.toString() || "0"} subtext="Total Linked" icon="person.2.fill" color={colors.primary} />
-                     <InfoCard title={t('home.pending')} value={userProfile?.stats?.pendingReports?.toString() || "0"} subtext="Reports to review" icon="clock.fill" color={colors.accent} />
-                  </>
-              )}
-          </View>
-
-          {/* Recent Activity Section - ONLY FOR PATIENTS */}
-          {userProfile?.role === 'patient' && (
-            <>
-                <ThemedText type="subtitle" style={styles.sectionTitle}>{t('home.recentActivity')}</ThemedText>
-                <View style={[styles.listContainer, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-                    {recentActivity.map((item, index) => (
-                        <View key={item.id}>
-                            <TouchableOpacity style={styles.listItem}>
-                                <View style={[styles.listIcon, { backgroundColor: colors.primary + '15' }]}>
-                                    {/* @ts-ignore */}
-                                    <IconSymbol name={item.icon} size={20} color={colors.primary} />
-                                </View>
-                                <View style={styles.listContent}>
-                                    <ThemedText type="defaultSemiBold">{item.title}</ThemedText>
-                                    <ThemedText style={[styles.listSubtext, { color: colors.secondary }]}>{item.subtitle}</ThemedText>
-                                </View>
-                                <ThemedText style={[styles.dateText, { color: colors.secondary }]}>{item.date}</ThemedText>
-                            </TouchableOpacity>
-                            {index < recentActivity.length - 1 && <View style={{ height: 1, backgroundColor: colors.border, marginLeft: 72 }} />}
-                        </View>
-                    ))}
+                    <View style={styles.selectedDoctorInfo}>
+                      <ThemedText type="defaultSemiBold">{selectedDoctor.displayName}</ThemedText>
+                      {/* @ts-ignore */}
+                      <ThemedText style={{ color: colors.secondary, fontSize: 12 }}>
+                        {selectedDoctor.specialty || 'General Practitioner'}
+                      </ThemedText>
+                    </View>
+                    <TouchableOpacity onPress={() => setSelectedDoctor(null)}>
+                      <IconSymbol name="xmark.circle.fill" size={20} color={colors.secondary} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
+              )}
+              
+              {/* Date Selection */}
+              <View style={styles.formGroup}>
+                <ThemedText style={[styles.label, { color: colors.secondary }]}>التاريخ</ThemedText>
+                <TouchableOpacity 
+                  style={[styles.inputField, { backgroundColor: colors.background, borderColor: colors.border }]}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <ThemedText>
+                    {selectedDate.toLocaleDateString('ar-EG', { 
+                      weekday: 'long', 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}
+                  </ThemedText>
+                  <IconSymbol name="calendar" size={20} color={colors.secondary} />
+                </TouchableOpacity>
+                
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={selectedDate}
+                    mode="date"
+                    display="default"
+                    minimumDate={new Date()}
+                    onChange={(event, date) => {
+                      setShowDatePicker(false);
+                      if (date) setSelectedDate(date);
+                    }}
+                  />
+                )}
+              </View>
+              
+              {/* Time Selection */}
+              <View style={styles.formGroup}>
+                <ThemedText style={[styles.label, { color: colors.secondary }]}>الوقت</ThemedText>
+                <TextInput
+                  style={[styles.timeInput, { 
+                    backgroundColor: colors.background, 
+                    borderColor: colors.border,
+                    color: colors.text
+                  }]}
+                  placeholder="مثال: 14:30"
+                  placeholderTextColor={colors.secondary}
+                  value={selectedTime}
+                  onChangeText={setSelectedTime}
+                />
+                <ThemedText style={[styles.hint, { color: colors.secondary }]}>
+                  أدخل الوقت بتنسيق 24 ساعة (ساعة:دقيقة)
+                </ThemedText>
+              </View>
+              
+              {/* Reason */}
+              <View style={styles.formGroup}>
+                <ThemedText style={[styles.label, { color: colors.secondary }]}>سبب الزيارة</ThemedText>
+                <TextInput
+                  style={[styles.textArea, { 
+                    backgroundColor: colors.background, 
+                    borderColor: colors.border,
+                    color: colors.text
+                  }]}
+                  placeholder="وصف الأعراض أو السبب"
+                  placeholderTextColor={colors.secondary}
+                  value={appointmentReason}
+                  onChangeText={setAppointmentReason}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+              </View>
+              
+              {/* Action Buttons */}
+              <View style={styles.formActions}>
+                <TouchableOpacity 
+                  style={[styles.secondaryButton, { borderColor: colors.border }]}
+                  onPress={() => setAppointmentModalVisible(false)}
+                >
+                  <ThemedText style={{ color: colors.secondary }}>إلغاء</ThemedText>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+                  onPress={handleBookAppointment}
+                  disabled={loading || !selectedDoctor || !selectedTime || !appointmentReason.trim()}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>حجز الموعد</ThemedText>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Main Content */}
+      <View style={styles.contentContainer}>
+        {/* Quick Stats */}
+        <View style={styles.statsContainer}>
+          {userProfile?.role === 'patient' ? (
+            <>
+              <InfoCard 
+                title="المؤشر الصحي" 
+                value={(userProfile as any)?.healthScore?.toString() || "0"} 
+                subtext="آخر تحديث" 
+                icon="heart.fill" 
+                color="#E11D48"
+                onPress={() => router.push('/health-metrics')}
+              />
+              <InfoCard 
+                title="المواعيد القادمة" 
+                value={upcomingAppointments.length.toString()} 
+                subtext="موعد قادم" 
+                icon="calendar.badge.clock" 
+                color={colors.primary}
+                onPress={() => router.push('/appointments')}
+              />
+            </>
+          ) : (
+            <>
+              <InfoCard 
+                title="المرضى" 
+                value={userProfile?.stats?.patientCount?.toString() || "0"} 
+                subtext="مرضى مرتبطين" 
+                icon="person.2.fill" 
+                color={colors.primary}
+                onPress={() => router.push('/(tabs)/patients')}
+              />
+              <InfoCard 
+                title="المواعيد" 
+                value={upcomingAppointments.length.toString()} 
+                subtext="اليوم" 
+                icon="calendar" 
+                color="#10B981"
+                onPress={() => router.push('/doctor-schedule')}
+              />
             </>
           )}
+        </View>
 
+        {/* Quick Actions */}
+        <ThemedText type="subtitle" style={styles.sectionTitle}>الإجراءات السريعة</ThemedText>
+        <View style={styles.quickActionGrid}>
+          {userProfile?.role === 'patient' ? (
+            <>
+              <QuickAction 
+                icon="calendar.badge.plus" 
+                label="حجز موعد" 
+                color={colors.primary} 
+                onPress={loadAvailableDoctors}
+              />
+              <QuickAction 
+                icon="message.fill" 
+                label="المحادثات" 
+                color="#10B981" 
+                onPress={() => router.push('/(tabs)/chat')}
+              />
+              <QuickAction 
+                icon="paperclip" 
+                label="رفع تقرير" 
+                color="#F59E0B" 
+                onPress={handleDocumentPick}
+              />
+              <QuickAction 
+                icon="waveform.path.ecg" 
+                label="تحليل ذكي" 
+                color="#8B5CF6" 
+                onPress={handleAiAnalysis}
+              />
+            </>
+          ) : (
+            <>
+              <QuickAction 
+                icon="qrcode" 
+                label="كود الربط" 
+                color={colors.primary} 
+                onPress={() => setCodeModalVisible(true)}
+              />
+              <QuickAction 
+                icon="person.badge.plus" 
+                label="إضافة مريض" 
+                color="#10B981" 
+                onPress={() => router.push('/add-patient')}
+              />
+              <QuickAction 
+                icon="message.fill" 
+                label="المحادثات" 
+                color="#F59E0B" 
+                onPress={() => router.push('/(tabs)/chat')}
+              />
+              <QuickAction 
+                icon="doc.text.fill" 
+                label="مراجعة تقارير" 
+                color="#8B5CF6" 
+                onPress={() => router.push('/pending-reports')}
+              />
+            </>
+          )}
+        </View>
+
+        {/* Upcoming Appointments */}
+        <View style={styles.appointmentsHeader}>
+          <ThemedText type="subtitle" style={styles.sectionTitle}>المواعيد القادمة</ThemedText>
+          {upcomingAppointments.length > 0 && (
+            <TouchableOpacity onPress={() => router.push('/appointments')}>
+              <ThemedText style={{ color: colors.primary, fontSize: 14 }}>عرض الكل</ThemedText>
+            </TouchableOpacity>
+          )}
+        </View>
+        
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color={colors.primary} />
           </View>
+        ) : upcomingAppointments.length > 0 ? (
+          <FlatList
+            data={upcomingAppointments.slice(0, 3)}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => <AppointmentCard appointment={item} />}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.appointmentsList}
+          />
+        ) : (
+          <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <IconSymbol name="calendar" size={40} color={colors.secondary} />
+            <ThemedText style={[styles.emptyStateText, { color: colors.secondary }]}>
+              {userProfile?.role === 'patient' 
+                ? 'لا توجد مواعيد قادمة. احجز موعدك الآن!' 
+                : 'لا توجد مواعيد قادمة.'}
+            </ThemedText>
+            {userProfile?.role === 'patient' && (
+              <TouchableOpacity 
+                style={[styles.emptyStateButton, { backgroundColor: colors.primary }]}
+                onPress={loadAvailableDoctors}
+              >
+                <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>حجز موعد جديد</ThemedText>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* Linked Profiles */}
+        {(linkedDoctors.length > 0 || linkedPatients.length > 0) && (
+          <>
+            <View style={styles.appointmentsHeader}>
+              <ThemedText type="subtitle" style={styles.sectionTitle}>
+                {userProfile?.role === 'patient' ? 'الأطباء المرتبطين' : 'المرضى الجدد'}
+              </ThemedText>
+              <TouchableOpacity onPress={() => router.push(userProfile?.role === 'patient' ? '/doctors' : '/(tabs)/patients')}>
+                <ThemedText style={{ color: colors.primary, fontSize: 14 }}>عرض الكل</ThemedText>
+              </TouchableOpacity>
+            </View>
+            
+            <FlatList
+              data={userProfile?.role === 'patient' ? linkedDoctors.slice(0, 3) : linkedPatients.slice(0, 3)}
+              keyExtractor={(item) => item.uid}
+              renderItem={({ item }) => (
+                <DoctorCard 
+                  doctor={item} 
+                  onSelect={() => {
+                    if (userProfile?.role === 'patient') {
+                      // Navigate to doctor profile
+                      router.push(`/doctor-profile/${item.uid}`);
+                    } else {
+                      // Navigate to patient profile
+                      router.push(`/patient-profile/${item.uid}`);
+                    }
+                  }}
+                />
+              )}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.linkedProfilesList}
+            />
+          </>
+        )}
+
+        {/* Mini Calendar for Patients */}
+        {userProfile?.role === 'patient' && (
+          <>
+            <ThemedText type="subtitle" style={styles.sectionTitle}>التقويم</ThemedText>
+            <View style={[styles.calendarContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Calendar
+                current={new Date().toISOString().split('T')[0]}
+                markedDates={calendarMarkedDates}
+                theme={{
+                  backgroundColor: colors.surface,
+                  calendarBackground: colors.surface,
+                  textSectionTitleColor: colors.secondary,
+                  selectedDayBackgroundColor: colors.primary,
+                  selectedDayTextColor: '#ffffff',
+                  todayTextColor: colors.primary,
+                  dayTextColor: colors.text,
+                  textDisabledColor: colors.border,
+                  dotColor: colors.primary,
+                  selectedDotColor: '#ffffff',
+                  arrowColor: colors.primary,
+                  monthTextColor: colors.text,
+                  textDayFontFamily: 'System',
+                  textMonthFontFamily: 'System',
+                  textDayHeaderFontFamily: 'System',
+                }}
+                onDayPress={(day) => {
+                  const appointmentsOnDay = upcomingAppointments.filter(
+                    appointment => new Date(appointment.date).toISOString().split('T')[0] === day.dateString
+                  );
+                  if (appointmentsOnDay.length > 0) {
+                    Alert.alert(
+                      'المواعيد',
+                      `لديك ${appointmentsOnDay.length} موعد في هذا اليوم`
+                    );
+                  }
+                }}
+              />
+            </View>
+          </>
+        )}
+      </View>
     </ParallaxScrollView>
   );
 }
@@ -273,141 +817,226 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   headerContent: {
-      flex: 1,
-      zIndex: 1,
+    flex: 1,
+    zIndex: 1,
   },
   greetingText: {
-      color: 'rgba(255,255,255,0.8)',
-      fontSize: 16,
-      marginBottom: 4,
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 16,
+    marginBottom: 4,
   },
   nameText: {
-      color: 'white',
-      fontSize: 28,
-      fontWeight: 'bold',
-      marginBottom: 4,
+    color: 'white',
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginBottom: 4,
   },
   roleText: {
-      color: 'rgba(255,255,255,0.6)',
-      fontSize: 12,
-      textTransform: 'uppercase',
-      letterSpacing: 1,
-      fontWeight: '600',
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+    fontWeight: '600',
   },
   headerIcon: {
-      position: 'absolute',
-      right: -10,
-      bottom: -10,
-      transform: [{ rotate: '-15deg' }],
+    position: 'absolute',
+    right: -10,
+    bottom: -10,
+    transform: [{ rotate: '-15deg' }],
   },
   contentContainer: {
-      padding: 20,
-      gap: 24,
+    padding: 20,
+    gap: 24,
   },
   sectionTitle: {
-      marginBottom: 12,
-      marginLeft: 4,
+    marginBottom: 12,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    gap: 12,
   },
   quickActionGrid: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      gap: 12,
-      paddingHorizontal: 0, // No horizontal padding here, handled by contentContainer
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12,
   },
   quickAction: {
-      flex: 1, // Distribute available space equally
-      maxWidth: '48%', // Limit max width for two items with gap
-      padding: 16,
-      borderRadius: 16,
-      borderWidth: 1,
-      alignItems: 'center',
-      gap: 12,
-  },
-  quickActionIcon: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      justifyContent: 'center',
-      alignItems: 'center',
-  },
-  quickActionLabel: {
-      fontWeight: '600',
-      textAlign: 'center',
-      fontSize: 14,
-  },
-  infoGrid: {
-      flexDirection: 'row',
-      gap: 12,
-  },
-  infoCard: {
-      flex: 1,
-      padding: 16,
-      borderRadius: 16,
-      borderWidth: 1,
-  },
-  infoCardHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-  },
-  infoCardTitle: {
-      fontSize: 14,
-      fontWeight: '500',
-  },
-  infoCardSubtext: {
-      fontSize: 12,
-      opacity: 0.6,
-  },
-  listContainer: {
-      borderRadius: 16,
-      borderWidth: 1,
-      overflow: 'hidden',
-  },
-  listItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: 16,
-      gap: 16,
-  },
-  listIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
-      justifyContent: 'center',
-      alignItems: 'center',
-  },
-  listContent: {
-      flex: 1,
-  },
-  listSubtext: {
-      fontSize: 13,
-      marginTop: 2,
-  },
-  dateText: {
-      fontSize: 12,
-      fontWeight: '500',
-  },
-  aiSection: {
+    width: '48%',
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-    gap: 16,
-  },
-  aiSectionContent: {
-    flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
-  iconContainer: {
+  quickActionIcon: {
     width: 48,
     height: 48,
-    borderRadius: 12,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  aiActionButton: {
-    paddingVertical: 12,
+  quickActionLabel: {
+    fontWeight: '600',
+    textAlign: 'center',
+    fontSize: 14,
+  },
+  infoCard: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  infoCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  infoCardTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  infoCardSubtext: {
+    fontSize: 12,
+    opacity: 0.6,
+  },
+  appointmentsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  appointmentsList: {
+    gap: 12,
+    paddingRight: 20,
+  },
+  appointmentCard: {
+    width: 280,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  appointmentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  appointmentStatus: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 12,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  todayBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#FEF3C7',
+  },
+  todayText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#92400E',
+  },
+  appointmentTitle: {
+    fontSize: 18,
+    marginBottom: 12,
+  },
+  appointmentDetails: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  detailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  detailText: {
+    fontSize: 12,
+  },
+  reasonText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  linkedProfilesList: {
+    gap: 12,
+    paddingRight: 20,
+  },
+  doctorCard: {
+    width: 300,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 12,
+  },
+  doctorAvatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+  },
+  doctorInfo: {
+    flex: 1,
+  },
+  doctorName: {
+    fontSize: 16,
+    marginBottom: 2,
+  },
+  doctorSpecialty: {
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  doctorMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
+  doctorMetaText: {
+    fontSize: 12,
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  ratingText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginLeft: 2,
+  },
+  ratingCount: {
+    fontSize: 11,
+  },
+  calendarContainer: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 12,
+  },
+  emptyState: {
+    padding: 40,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    borderStyle: 'dashed',
+  },
+  emptyStateText: {
+    marginTop: 12,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  emptyStateButton: {
+    marginTop: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  loadingContainer: {
+    padding: 40,
     alignItems: 'center',
   },
   // Modal Styles
@@ -430,6 +1059,24 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
+  largeModalView: {
+    width: '100%',
+    height: '80%',
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    width: '100%',
+  },
   codeDisplay: {
     paddingVertical: 12,
     paddingHorizontal: 32,
@@ -437,6 +1084,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderStyle: 'dashed',
     marginBottom: 24,
+    alignItems: 'center',
   },
   modalButton: {
     paddingVertical: 12,
@@ -449,5 +1097,89 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  doctorsList: {
+    gap: 12,
+    paddingBottom: 20,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // Appointment Form Styles
+  appointmentForm: {
+    flex: 1,
+  },
+  selectedDoctorContainer: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  selectedDoctorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+  },
+  smallDoctorAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  selectedDoctorInfo: {
+    flex: 1,
+  },
+  formGroup: {
+    marginBottom: 20,
+  },
+  inputField: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  timeInput: {
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    fontSize: 16,
+  },
+  hint: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  textArea: {
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    fontSize: 16,
+    minHeight: 100,
+  },
+  formActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+    marginBottom: 20,
+  },
+  primaryButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  secondaryButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
   },
 });

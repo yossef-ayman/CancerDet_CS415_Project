@@ -64,9 +64,22 @@ def load_resources():
     # 1. Load Models & Scalers
     for key, info in MODELS_INFO.items():
         if os.path.exists(info["model_path"]):
-            _loaded_models[key] = tf.keras.models.load_model(info["model_path"])
-            _loaded_scalers[key] = joblib.load(info["scaler_path"])
-            print(f"   ✅ Loaded {key} model")
+            try:
+                _loaded_models[key] = tf.keras.models.load_model(info["model_path"])
+                _loaded_scalers[key] = joblib.load(info["scaler_path"])
+                print(f"   ✅ Loaded {key} model")
+            except Exception as e:
+                # Common deserialization issues can crash startup inside Docker.
+                print(f"   ❌ Failed loading {key} model: {e}")
+                # Try a non-compiled load as a fallback, then continue without blocking startup.
+                try:
+                    print(f"   ⏳ Retrying {key} load with compile=False...")
+                    _loaded_models[key] = tf.keras.models.load_model(info["model_path"], compile=False)
+                    _loaded_scalers[key] = joblib.load(info["scaler_path"])
+                    print(f"   ✅ Loaded {key} model (compile=False)")
+                except Exception as e2:
+                    print(f"   ❌ Could not load {key} model after retry: {e2}")
+                    _loaded_models[key] = None
         else:
             print(f"   ❌ Missing file for {key}")
 
@@ -225,6 +238,10 @@ async def predict(req: PredictRequest):
 
     if model_key not in _loaded_models:
         raise HTTPException(status_code=500, detail=f"Model {model_key} not loaded properly")
+
+    # Also handle models that failed to load earlier (set to None)
+    if _loaded_models.get(model_key) is None:
+        raise HTTPException(status_code=500, detail=f"Model {model_key} failed to load at startup")
 
     model = _loaded_models[model_key]
     scaler = _loaded_scalers[model_key]

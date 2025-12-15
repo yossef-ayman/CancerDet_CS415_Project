@@ -5,8 +5,8 @@ import { Image } from 'expo-image';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
 import * as WebBrowser from 'expo-web-browser';
+import { useTranslation } from 'react-i18next';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -15,6 +15,7 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/context/auth';
 import { subscribeToMessages, sendMessage } from '@/services/chat';
+import { uploadChatFile } from '@/services/storage';
 import { ChatMessage, Chat } from '@/types/chat';
 
 export default function ChatDetailScreen() {
@@ -23,11 +24,13 @@ export default function ChatDetailScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const theme = colorScheme ?? 'light';
+  const { t } = useTranslation();
   
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
   const [sendingFile, setSendingFile] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [chatInfo, setChatInfo] = useState<Chat | null>(null);
   const [headerHeight, setHeaderHeight] = useState(90);
 
@@ -41,13 +44,13 @@ export default function ChatDetailScreen() {
             if (snap.exists()) {
                 setChatInfo({ id: snap.id, ...snap.data() } as Chat);
             } else {
-                Alert.alert('Error', 'Chat not found.');
+                Alert.alert(t('chat.chatNotFound'), '');
                 router.back();
             }
         })
         .catch(error => {
             console.error("Error fetching chat info:", error);
-            Alert.alert('Error', 'Failed to load chat information.');
+            Alert.alert(t('chat.connectionError'), t('chat.connectionErrorDesc'));
         });
 
     // Subscribe to Messages
@@ -56,7 +59,7 @@ export default function ChatDetailScreen() {
       setLoading(false);
     }, (error) => {
         setLoading(false);
-        Alert.alert('Connection Error', 'Failed to load messages. Please check your internet connection.');
+        Alert.alert(t('chat.connectionError'), t('chat.connectionErrorDesc'));
     });
 
     return () => unsubscribe();
@@ -71,7 +74,7 @@ export default function ChatDetailScreen() {
       await sendMessage(id, { text, type: 'text' }, userProfile);
     } catch (error: any) {
       console.error('Failed to send message:', error);
-      Alert.alert('Send Failed', error.message || 'Could not send message. Please try again.');
+      Alert.alert(t('chat.sendFailed'), error.message || t('chat.sendFailedDesc'));
     }
   };
 
@@ -80,7 +83,7 @@ export default function ChatDetailScreen() {
 
       try {
           const result = await DocumentPicker.getDocumentAsync({
-              type: 'application/pdf',
+              type: ['application/pdf', 'image/*'],
               copyToCacheDirectory: true,
           });
 
@@ -88,48 +91,51 @@ export default function ChatDetailScreen() {
           
           const file = result.assets[0];
           
-          // Check size (limit to ~800KB to be safe for Firestore 1MB limit)
-          if (file.size && file.size > 800 * 1024) {
-              Alert.alert('File too large', 'Please select a PDF smaller than 800KB to ensure it can be sent.');
+          // Check size (limit to 10MB)
+          const maxSize = 10 * 1024 * 1024; // 10MB
+          if (file.size && file.size > maxSize) {
+              Alert.alert(t('chat.fileTooLarge'), t('chat.fileTooLargeDesc'));
               return;
           }
 
           setSendingFile(true);
+          setUploadProgress(0);
 
-          // Read file as Base64
-          // @ts-ignore
-          const base64 = await FileSystem.readAsStringAsync(file.uri, {
-              encoding: FileSystem.EncodingType.Base64,
-          });
+          // Upload file to Firebase Storage
+          const fileUrl = await uploadChatFile(
+              id,
+              userProfile.uid,
+              file.uri,
+              file.name,
+              file.mimeType || 'application/pdf',
+              (progress) => setUploadProgress(progress)
+          );
 
-          const filePayload = {
-              content: base64,
-              name: file.name,
-              mimeType: file.mimeType || 'application/pdf',
-              size: file.size,
-          };
-
+          // Send message with file URL
           await sendMessage(id, { 
-              text: 'Sent a medical report', 
-              type: 'file', 
-              file: filePayload 
+              text: t('chat.medicalReport'), 
+              type: 'file',
+              fileUrl: fileUrl,
+              fileName: file.name,
+              fileSize: file.size || 0,
+              mimeType: file.mimeType || 'application/pdf'
           }, userProfile);
 
+          setUploadProgress(0);
       } catch (error: any) {
           console.error('Error picking/sending file:', error);
-          Alert.alert('Upload Failed', error.message || 'Failed to process and send the file.');
+          Alert.alert(t('chat.uploadFailed'), error.message || t('chat.uploadFailedDesc'));
       } finally {
           setSendingFile(false);
       }
   };
 
-  const handleOpenFile = async (fileContent: string, mimeType: string) => {
+  const handleOpenFile = async (fileUrl: string) => {
       try {
-          const dataUri = `data:${mimeType};base64,${fileContent}`;
-          await WebBrowser.openBrowserAsync(dataUri);
+          await WebBrowser.openBrowserAsync(fileUrl);
       } catch (error) {
           console.error("Error opening file:", error);
-          Alert.alert('Error', 'Could not open the file. It might be corrupted or incompatible.');
+          Alert.alert(t('chat.openFileError'), t('chat.openFileErrorDesc'));
       }
   };
 
@@ -155,19 +161,19 @@ export default function ChatDetailScreen() {
           { backgroundColor: isMe ? Colors[theme].tint : (theme === 'dark' ? '#333' : '#e5e5ea') }
         ]}>
           {isFile ? (
-              <TouchableOpacity 
-                style={styles.fileContainer}
-                onPress={() => item.file && handleOpenFile(item.file.content, item.file.mimeType)}>
-                  <IconSymbol name="doc.fill" size={24} color={isMe ? 'white' : Colors[theme].text} />
-                  <View style={styles.fileInfo}>
-                      <ThemedText style={[styles.fileName, isMe ? { color: 'white' } : { color: Colors[theme].text }]}>
-                          {item.file?.name || 'Medical Report'}
-                      </ThemedText>
-                      <ThemedText style={[styles.fileSize, isMe ? { color: 'rgba(255,255,255,0.7)' } : { color: Colors[theme].icon }]}>
-                          Tap to view
-                      </ThemedText>
-                  </View>
-              </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.fileContainer}
+                 onPress={() => item.fileUrl && handleOpenFile(item.fileUrl)}>
+                   <IconSymbol name="doc.fill" size={24} color={isMe ? 'white' : Colors[theme].text} />
+                   <View style={styles.fileInfo}>
+                       <ThemedText style={[styles.fileName, isMe ? { color: 'white' } : { color: Colors[theme].text }]}>
+                           {item.fileName || t('chat.medicalReport')}
+                       </ThemedText>
+                       <ThemedText style={[styles.fileSize, isMe ? { color: 'rgba(255,255,255,0.7)' } : { color: Colors[theme].icon }]}>
+                           {t('chat.tapToView')}
+                       </ThemedText>
+                   </View>
+                 </TouchableOpacity>
           ) : (
             <ThemedText style={[styles.messageText, isMe ? { color: 'white' } : { color: Colors[theme].text }]}>
                 {item.text}
@@ -232,11 +238,18 @@ export default function ChatDetailScreen() {
                   style={styles.attachButton} 
                   onPress={handlePickDocument}
                   disabled={sendingFile}>
-                  {sendingFile ? (
-                      <ActivityIndicator size="small" color={Colors[theme].tint} />
-                  ) : (
-                      <IconSymbol name="paperclip" size={24} color={Colors[theme].icon} />
-                  )}
+                   {sendingFile ? (
+                       <View style={{ alignItems: 'center' }}>
+                           <ActivityIndicator size="small" color={Colors[theme].tint} />
+                           {uploadProgress > 0 && (
+                               <ThemedText style={{ fontSize: 10, marginTop: 2 }}>
+                                   {Math.round(uploadProgress)}%
+                               </ThemedText>
+                           )}
+                       </View>
+                   ) : (
+                       <IconSymbol name="paperclip" size={24} color={Colors[theme].icon} />
+                   )}
                 </TouchableOpacity>
             )}
 
@@ -248,7 +261,7 @@ export default function ChatDetailScreen() {
                       color: Colors[theme].text 
                   }
               ]}
-              placeholder="Type a message..."
+               placeholder={t('chat.typeMessage')}
               placeholderTextColor={Colors[theme].icon + '80'}
               value={inputText}
               onChangeText={setInputText}

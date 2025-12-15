@@ -2,7 +2,8 @@ import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, getDoc
 import { db } from '@/config/firebase';
 import { UserProfile, DoctorProfile, PatientProfile } from '@/types/user';
 
-export const createUserProfile = async (userProfile: UserProfile | DoctorProfile | PatientProfile) => {
+// =============== PROFILE MANAGEMENT ===============
+export const createUserProfile = async (userProfile: UserProfile | DoctorProfile | PatientProfile): Promise<void> => {
   try {
     await setDoc(doc(db, 'users', userProfile.uid), userProfile);
   } catch (error) {
@@ -74,6 +75,108 @@ export const incrementPendingReports = async (uid: string) => {
     });
   } catch (error) {
     console.error('Error incrementing pending reports:', error);
+  }
+};
+
+// =============== PATIENT MANAGEMENT ===============
+export const getPatientById = async (patientId: string): Promise<PatientProfile | null> => {
+  try {
+    const docRef = doc(db, 'users', patientId);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (data.role === 'patient') {
+        return data as PatientProfile;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting patient by ID:', error);
+    return null;
+  }
+};
+
+export const getPatientsByDoctor = async (doctorId: string): Promise<PatientProfile[]> => {
+  try {
+    const usersRef = collection(db, 'users');
+    const q = query(
+      usersRef,
+      where('role', '==', 'patient'),
+      where('linkedDoctorId', '==', doctorId)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const patients: PatientProfile[] = [];
+    
+    querySnapshot.docs.forEach(doc => {
+      patients.push({
+        uid: doc.id,
+        ...doc.data()
+      } as PatientProfile);
+    });
+    
+    return patients;
+  } catch (error) {
+    console.error('Error getting patients by doctor:', error);
+    return [];
+  }
+};
+
+export const getPatientsByName = async (name: string, doctorId?: string): Promise<PatientProfile[]> => {
+  try {
+    let q;
+    const usersRef = collection(db, 'users');
+    
+    if (doctorId) {
+      q = query(
+        usersRef,
+        where('role', '==', 'patient'),
+        where('linkedDoctorId', '==', doctorId)
+      );
+    } else {
+      q = query(
+        usersRef,
+        where('role', '==', 'patient')
+      );
+    }
+    
+    const querySnapshot = await getDocs(q);
+    const patients: PatientProfile[] = [];
+    
+    querySnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.displayName?.toLowerCase().includes(name.toLowerCase())) {
+        patients.push({
+          uid: doc.id,
+          ...data
+        } as PatientProfile);
+      }
+    });
+    
+    return patients;
+  } catch (error) {
+    console.error('Error searching patients:', error);
+    return [];
+  }
+};
+
+// =============== DOCTOR MANAGEMENT ===============
+export const getDoctorById = async (doctorId: string): Promise<DoctorProfile | null> => {
+  try {
+    const docRef = doc(db, 'users', doctorId);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (data.role === 'doctor') {
+        return data as DoctorProfile;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting doctor by ID:', error);
+    return null;
   }
 };
 

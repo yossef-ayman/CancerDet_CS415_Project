@@ -8,12 +8,10 @@ export interface ChatMessage {
     avatar?: string;
   };
   type?: 'text' | 'file'; // Message type
-  file?: {
-      content: string; // Base64 content
-      name: string;
-      mimeType: string;
-      size?: number;
-  };
+  fileUrl?: string; // Firebase Storage URL
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
 }
 
 export interface Chat {
