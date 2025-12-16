@@ -34,12 +34,12 @@ const getApiBaseUrl = () => {
   const localhost = debuggerHost?.split(':')[0];
 
   if (localhost) {
-    return `http://${localhost}:8000`;
+    return `https://server-l-utdw.fly.dev/`;
   }
 
   // Fallback if not in development or hostUri is undefined
   // Updated to current local IP:
-  return 'http://192.168.1.11:8000';
+  return 'https://server-l-utdw.fly.dev/';
 };
 
 const API_BASE_URL = getApiBaseUrl();

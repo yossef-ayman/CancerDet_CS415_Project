@@ -1,51 +1,33 @@
-# استبدل FROM python:3.10-alpine
-# ------------------------------------------------
-# 🟦 1. الصورة الأساسية: العودة لـ Slim (للتوافق مع TensorFlow)
-# ------------------------------------------------
+
 FROM python:3.10-slim
 
-# ... (باقي المتغيرات)
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 
 WORKDIR /app
 
-# ------------------------------------------------
-# 🟦 2. تثبيت حزم النظام المطلوبة للـ AI (باستخدام apt-get مرة أخرى)
-# ------------------------------------------------
-# نأمل أن تكون خطوة apt-get update أسرع هذه المرة.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \
     libgomp1 \
-    # ... أضف أي حزم أخرى تحتاجها
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-    
-# ------------------------------------------------
-# 🟦 3. تثبيت مكتبات البايثون (سيعمل الآن مع التوزيعات المجمعة مسبقاً)
-# ------------------------------------------------
-COPY requirements.txt .
+
+COPY req.txt .
+
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+    pip install --no-cache-dir -r req.txt
 
-# ... (باقي Dockerfile)
-# ------------------------------------------------
-# 🟦 4. الأمان ونسخ الملفات (بما في ذلك مجلد AI)
-# ------------------------------------------------
-# إعداد مستخدم غير جذري (أمان أفضل)
-RUN adduser -D appuser && \
-    mkdir -p /app/AI/ && chown appuser:appuser -R /app/AI/
-    
-# نسخ كل ملفات المشروع
+RUN adduser --system --no-create-home appuser
+RUN mkdir -p /app/AI/ && chown appuser:appuser -R /app/AI/
+
 COPY --chown=appuser:appuser . .
 
 USER appuser
 
 EXPOSE 8000
 
-# ------------------------------------------------
-# 🟦 5. أمر التشغيل النهائي
-# ------------------------------------------------
 CMD ["gunicorn", "AI.server:app", \
      "--workers", "4", \
      "--worker-class", "uvicorn.workers.UvicornWorker", \
