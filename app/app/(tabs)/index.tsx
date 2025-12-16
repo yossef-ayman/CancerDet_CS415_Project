@@ -27,8 +27,8 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/context/auth';
-import { createAppointment, getAvailableDoctors, getUpcomingAppointments, getDoctorSchedule } from '@/services/appointment';
-import { UserProfile, Appointment } from '@/types/user';
+import { getAvailableDoctors } from '@/services/user';
+import { UserProfile } from '@/types/user';
 
 const { width } = Dimensions.get('window');
 const isSmallScreen = width < 380;
@@ -44,19 +44,10 @@ export default function HomeScreen() {
 
   const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
   const [codeModalVisible, setCodeModalVisible] = useState(false);
-  const [appointmentModalVisible, setAppointmentModalVisible] = useState(false);
-  const [doctorsModalVisible, setDoctorsModalVisible] = useState(false);
   const [availableDoctors, setAvailableDoctors] = useState<UserProfile[]>([]);
-  const [upcomingAppointments, setUpcomingAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedTime, setSelectedTime] = useState('');
   const [selectedDoctor, setSelectedDoctor] = useState<UserProfile | null>(null);
-  const [appointmentReason, setAppointmentReason] = useState('');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const [calendarMarkedDates, setCalendarMarkedDates] = useState({});
   const [linkedDoctors, setLinkedDoctors] = useState<UserProfile[]>([]);
   const [linkedPatients, setLinkedPatients] = useState<UserProfile[]>([]);
 
@@ -70,10 +61,6 @@ export default function HomeScreen() {
 
     setLoading(true);
     try {
-      // Load upcoming appointments
-      const appointments = await getUpcomingAppointments(userProfile.uid);
-      setUpcomingAppointments(appointments);
-
       // Load linked profiles
       if (userProfile.role === 'patient' && getLinkedDoctors) {
         const doctors = await getLinkedDoctors();
@@ -82,18 +69,6 @@ export default function HomeScreen() {
         const patients = await getLinkedPatients();
         setLinkedPatients(patients);
       }
-
-      // Prepare calendar marked dates
-      const markedDates: any = {};
-      appointments.forEach(appointment => {
-        const dateStr = new Date(appointment.date).toISOString().split('T')[0];
-        markedDates[dateStr] = {
-          selected: true,
-          selectedColor: colors.primary,
-          dotColor: 'white',
-        };
-      });
-      setCalendarMarkedDates(markedDates);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -173,75 +148,7 @@ export default function HomeScreen() {
     </TouchableOpacity>
   );
 
-  const AppointmentCard = ({ appointment }: { appointment: Appointment }) => {
-    const appointmentDate = new Date(`${appointment.date}T${appointment.time}`);
-    const isToday = new Date().toDateString() === appointmentDate.toDateString();
 
-    return (
-      <TouchableOpacity
-        style={[styles.appointmentCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        onPress={() => router.push(`/appointment-details/${appointment.id}`)}
-      >
-        <View style={styles.appointmentHeader}>
-          <View style={[styles.appointmentStatus, {
-            backgroundColor:
-              appointment.status === 'confirmed' ? '#DCFCE7' :
-                appointment.status === 'pending' ? '#FEF9C3' :
-                  appointment.status === 'cancelled' ? '#FEE2E2' : '#E0F2FE'
-          }]}>
-            <ThemedText style={[styles.statusText, {
-              color:
-                appointment.status === 'confirmed' ? '#166534' :
-                  appointment.status === 'pending' ? '#854D0E' :
-                    appointment.status === 'cancelled' ? '#991B1B' : '#075985'
-            }]}>
-              {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
-            </ThemedText>
-          </View>
-          {isToday && (
-            <View style={styles.todayBadge}>
-              <ThemedText style={styles.todayText}>Today</ThemedText>
-            </View>
-          )}
-        </View>
-
-        <ThemedText type="defaultSemiBold" style={styles.appointmentTitle}>
-          {userProfile?.role === 'patient' ? appointment.doctorName : appointment.patientName}
-        </ThemedText>
-
-        <View style={styles.appointmentDetails}>
-          <View style={styles.detailItem}>
-            <IconSymbol name="calendar" size={14} color={colors.secondary} />
-            <ThemedText style={[styles.detailText, { color: colors.secondary }]}>
-              {appointmentDate.toLocaleDateString('en-US', {
-                weekday: 'short',
-                month: 'short',
-                day: 'numeric'
-              })}
-            </ThemedText>
-          </View>
-
-          <View style={styles.detailItem}>
-            <IconSymbol name="clock" size={14} color={colors.secondary} />
-            <ThemedText style={[styles.detailText, { color: colors.secondary }]}>
-              {appointment.time}
-            </ThemedText>
-          </View>
-
-          <View style={styles.detailItem}>
-            <IconSymbol name="stethoscope" size={14} color={colors.secondary} />
-            <ThemedText style={[styles.detailText, { color: colors.secondary }]}>
-              {appointment.type}
-            </ThemedText>
-          </View>
-        </View>
-
-        <ThemedText style={[styles.reasonText, { color: colors.secondary }]} numberOfLines={2}>
-          {appointment.reason}
-        </ThemedText>
-      </TouchableOpacity>
-    );
-  };
 
   const DoctorCard = ({ doctor, onSelect }: { doctor: UserProfile, onSelect: () => void }) => (
     <TouchableOpacity
@@ -367,7 +274,7 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      {/* Doctors Modal */}
+      {/* Doctors Modal
       <Modal
         animationType="slide"
         transparent={true}
@@ -395,10 +302,8 @@ export default function HomeScreen() {
                 renderItem={({ item }) => (
                   <DoctorCard
                     doctor={item}
-                    onSelect={() => {
                       setSelectedDoctor(item);
                       setDoctorsModalVisible(false);
-                      // setAppointmentModalVisible(true); // Removed booking logic
                     }}
                   />
                 )}
@@ -413,7 +318,7 @@ export default function HomeScreen() {
             )}
           </View>
         </View>
-      </Modal>
+      </Modal> */}
 
       {/* Appointment Booking Modal Removed */}
 
@@ -432,14 +337,6 @@ export default function HomeScreen() {
                 color="#E11D48"
                 onPress={() => router.push('/health-metrics')}
               />
-              <InfoCard
-                title={t('home.stats.upcomingAppointments')}
-                value={upcomingAppointments.length.toString()}
-                subtext={t('home.stats.nextAppointment')}
-                icon="calendar.badge.clock"
-                color={colors.primary}
-                onPress={() => router.push('/appointments')}
-              />
             </>
           ) : (
             <>
@@ -450,14 +347,6 @@ export default function HomeScreen() {
                 icon="person.2.fill"
                 color={colors.primary}
                 onPress={() => router.push('/(tabs)/patients')}
-              />
-              <InfoCard
-                title={t('home.stats.appointments')}
-                value={upcomingAppointments.length.toString()}
-                subtext={t('home.stats.today')}
-                icon="calendar"
-                color="#10B981"
-                onPress={() => router.push('/doctor-schedule')}
               />
             </>
           )}
@@ -517,42 +406,7 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* Upcoming Appointments */}
-        <View style={styles.appointmentsHeader}>
-          <ThemedText type="subtitle" style={styles.sectionTitle}>{t('home.section.upcoming')}</ThemedText>
-          {upcomingAppointments.length > 0 && (
-            <TouchableOpacity onPress={() => router.push('/appointments')}>
-              <ThemedText style={{ color: colors.primary, fontSize: 14 }}>{t('home.action.viewAll')}</ThemedText>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color={colors.primary} />
-          </View>
-        ) : upcomingAppointments.length > 0 ? (
-          <FlatList
-            data={upcomingAppointments.slice(0, 3)}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <AppointmentCard appointment={item} />}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.appointmentsList}
-          />
-        ) : (
-          <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <IconSymbol name="calendar" size={40} color={colors.secondary} />
-            <ThemedText style={[styles.emptyStateText, { color: colors.secondary }]}>
-              {userProfile?.role === 'patient'
-                ? t('home.empty.noAppointmentsPatient')
-                : t('home.empty.noAppointmentsDoctor')}
-            </ThemedText>
-            {userProfile?.role === 'patient' && (
-              <></>
-            )}
-          </View>
-        )}
+        {/* Upcoming Appointments Removed */}
 
         {/* Linked Profiles */}
         {(linkedDoctors.length > 0 || linkedPatients.length > 0) && (
@@ -590,46 +444,7 @@ export default function HomeScreen() {
           </>
         )}
 
-        {/* Mini Calendar for Patients */}
-        {userProfile?.role === 'patient' && (
-          <>
-            <ThemedText type="subtitle" style={styles.sectionTitle}>{t('home.section.calendar')}</ThemedText>
-            <View style={[styles.calendarContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Calendar
-                current={new Date().toISOString().split('T')[0]}
-                markedDates={calendarMarkedDates}
-                theme={{
-                  backgroundColor: colors.surface,
-                  calendarBackground: colors.surface,
-                  textSectionTitleColor: colors.secondary,
-                  selectedDayBackgroundColor: colors.primary,
-                  selectedDayTextColor: '#ffffff',
-                  todayTextColor: colors.primary,
-                  dayTextColor: colors.text,
-                  textDisabledColor: colors.border,
-                  dotColor: colors.primary,
-                  selectedDotColor: '#ffffff',
-                  arrowColor: colors.primary,
-                  monthTextColor: colors.text,
-                  textDayFontFamily: 'System',
-                  textMonthFontFamily: 'System',
-                  textDayHeaderFontFamily: 'System',
-                }}
-                onDayPress={(day) => {
-                  const appointmentsOnDay = upcomingAppointments.filter(
-                    appointment => new Date(appointment.date).toISOString().split('T')[0] === day.dateString
-                  );
-                  if (appointmentsOnDay.length > 0) {
-                    Alert.alert(
-                      'المواعيد',
-                      `لديك ${appointmentsOnDay.length} موعد في هذا اليوم`
-                    );
-                  }
-                }}
-              />
-            </View>
-          </>
-        )}
+        {/* Mini Calendar for Patients Removed */}
       </View>
     </ParallaxScrollView>
   );

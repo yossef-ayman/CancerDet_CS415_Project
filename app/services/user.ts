@@ -83,7 +83,7 @@ export const getPatientById = async (patientId: string): Promise<PatientProfile 
   try {
     const docRef = doc(db, 'users', patientId);
     const docSnap = await getDoc(docRef);
-    
+
     if (docSnap.exists()) {
       const data = docSnap.data();
       if (data.role === 'patient') {
@@ -105,17 +105,17 @@ export const getPatientsByDoctor = async (doctorId: string): Promise<PatientProf
       where('role', '==', 'patient'),
       where('linkedDoctorId', '==', doctorId)
     );
-    
+
     const querySnapshot = await getDocs(q);
     const patients: PatientProfile[] = [];
-    
+
     querySnapshot.docs.forEach(doc => {
       patients.push({
         uid: doc.id,
         ...doc.data()
       } as PatientProfile);
     });
-    
+
     return patients;
   } catch (error) {
     console.error('Error getting patients by doctor:', error);
@@ -127,7 +127,7 @@ export const getPatientsByName = async (name: string, doctorId?: string): Promis
   try {
     let q;
     const usersRef = collection(db, 'users');
-    
+
     if (doctorId) {
       q = query(
         usersRef,
@@ -140,10 +140,10 @@ export const getPatientsByName = async (name: string, doctorId?: string): Promis
         where('role', '==', 'patient')
       );
     }
-    
+
     const querySnapshot = await getDocs(q);
     const patients: PatientProfile[] = [];
-    
+
     querySnapshot.docs.forEach(doc => {
       const data = doc.data();
       if (data.displayName?.toLowerCase().includes(name.toLowerCase())) {
@@ -153,7 +153,7 @@ export const getPatientsByName = async (name: string, doctorId?: string): Promis
         } as PatientProfile);
       }
     });
-    
+
     return patients;
   } catch (error) {
     console.error('Error searching patients:', error);
@@ -166,7 +166,7 @@ export const getDoctorById = async (doctorId: string): Promise<DoctorProfile | n
   try {
     const docRef = doc(db, 'users', doctorId);
     const docSnap = await getDoc(docRef);
-    
+
     if (docSnap.exists()) {
       const data = docSnap.data();
       if (data.role === 'doctor') {
@@ -181,3 +181,61 @@ export const getDoctorById = async (doctorId: string): Promise<DoctorProfile | n
 };
 
 
+
+// Get available doctors
+export const getAvailableDoctors = async (): Promise<UserProfile[]> => {
+  try {
+    const usersRef = collection(db, 'users');
+    const q = query(
+      usersRef,
+      where('role', '==', 'doctor'),
+      where('isVerified', '==', true),
+      limit(20)
+    );
+
+    const querySnapshot = await getDocs(q);
+    const doctors: UserProfile[] = [];
+
+    querySnapshot.docs.forEach(doc => {
+      doctors.push({
+        uid: doc.id,
+        ...doc.data()
+      } as UserProfile);
+    });
+
+    return doctors;
+  } catch (error) {
+    console.error('Error getting doctors:', error);
+    return [];
+  }
+};
+
+export const searchDoctors = async (queryText: string): Promise<UserProfile[]> => {
+  try {
+    const usersRef = collection(db, 'users');
+    const q = query(
+      usersRef,
+      where('role', '==', 'doctor'),
+      where('isVerified', '==', true)
+    );
+
+    const querySnapshot = await getDocs(q);
+    const doctors: UserProfile[] = [];
+
+    querySnapshot.docs.forEach(doc => {
+      const data = doc.data() as DoctorProfile;
+      if (data.displayName?.toLowerCase().includes(queryText.toLowerCase()) ||
+        data.specialty?.toLowerCase().includes(queryText.toLowerCase())) {
+        doctors.push({
+          ...data,
+          uid: doc.id,
+        });
+      }
+    });
+
+    return doctors;
+  } catch (error) {
+    console.error('Error searching doctors:', error);
+    return [];
+  }
+};

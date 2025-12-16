@@ -34,7 +34,7 @@ export default function DoctorProfileScreen() {
 
   const loadDoctor = async () => {
     if (!id) return;
-    
+
     setLoading(true);
     try {
       const data = await getDoctorById(id);
@@ -48,7 +48,7 @@ export default function DoctorProfileScreen() {
 
   const handleStartChat = async () => {
     if (!doctor || !userProfile || userProfile.role !== 'patient') return;
-    
+
     setChatting(true);
     try {
       const chatId = await createOrGetChat(userProfile, doctor);
@@ -177,19 +177,7 @@ export default function DoctorProfileScreen() {
                   </>
                 )}
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}
-                onPress={() => {
-                  // Navigate to appointment booking with this doctor
-                  router.push({
-                    pathname: '/(tabs)',
-                    params: { doctorId: doctor.uid }
-                  });
-                }}
-              >
-                <IconSymbol name="calendar.badge.plus" size={20} color={colors.primary} />
-                <ThemedText style={[styles.actionButtonText, { color: colors.primary }]}>حجز موعد</ThemedText>
-              </TouchableOpacity>
+
             </View>
           )}
         </View>
